@@ -50,19 +50,6 @@ flowchart LR
 ## Request Decision Flow
 
 ```mermaid
-%%{init: {'theme':'base','themeVariables':{
-'primaryColor':'#f7fafc',
-'primaryTextColor':'#102a43',
-'primaryBorderColor':'#2d3748',
-'actorBorder':'#1f7a8c',
-'actorBkg':'#e6fffa',
-'actorTextColor':'#102a43',
-'signalColor':'#1f7a8c',
-'signalTextColor':'#102a43',
-'labelBoxBkgColor':'#fffaf0',
-'labelBoxBorderColor':'#f59e0b',
-'labelTextColor':'#102a43'
-}}}%%
 sequenceDiagram
     participant A as Agent
     participant P as Proxy
