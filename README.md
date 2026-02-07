@@ -18,8 +18,9 @@ flowchart LR
     AGENTS["Agents (MCP + A2A)"] --> PROXY["AstraGraph Proxy (Rust)"]
     PROXY --> POLICY["Policy Service (Rust)"]
     PROXY --> GRAPH["Graph Service (Rust)"]
-    PROXY --> VERIFIER["Verifier Service (Python)"]
+    PROXY --> VERIFIER["Verifier Service (Python, required at startup)"]
     GRAPH --> DASH["Dashboard (React/Vite)"]
+    POLICY --> DASH
     POLICY --> POLICYFILES["Policy YAML Files"]
     GRAPH --> DATASTORE["Graph + Audit Data"]
 ```
@@ -36,14 +37,20 @@ sequenceDiagram
 
     A->>P: MCP tool call / A2A task
     P->>S: Evaluate(policy_id, action, context)
-    S-->>P: allow | deny + rule_id
-    P->>V: Score deviation (optional)
-    V-->>P: score, rationale
-    P->>G: Append graph node + edges + audit metadata
-    alt allowed
-      P-->>A: Forward to upstream and return result
-    else denied
+    alt policy denies
+      S-->>P: deny + rule_id
+      P->>G: Write blocked action/audit metadata
       P-->>A: 403 POLICY_VIOLATION
+    else policy allows
+      S-->>P: allow + threshold/fallback
+      P->>V: Score deviation
+      V-->>P: score, rationale
+      P->>G: Write action/handoff + verification nodes
+      alt score within threshold
+        P-->>A: Forward to upstream and return result
+      else score violates policy
+        P-->>A: 403 POLICY_VIOLATION
+      end
     end
 ```
 
@@ -52,7 +59,7 @@ sequenceDiagram
 ### Prerequisites
 
 - Docker Desktop
-- Python 3.11+
+- Python 3.11+ (3.12+ recommended)
 - `make`
 - Rust toolchain (only needed for local non-container runs)
 
