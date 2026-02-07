@@ -8,7 +8,7 @@ This project is early-stage. Security fixes are applied to the latest mainline c
 
 Please do not open public issues for security-sensitive reports.
 
-Email: security@astragraph.dev (replace with your preferred address)
+Email: yagna7077@gmail.com
 
 Include:
 - Impact summary
