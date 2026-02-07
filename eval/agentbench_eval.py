@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import urllib.error
 import urllib.request
 
 
@@ -74,6 +75,8 @@ def main() -> int:
             try:
                 with urllib.request.urlopen(request, timeout=2) as response:
                     status = response.status
+            except urllib.error.HTTPError as error:
+                status = error.code
             except Exception:
                 if args.strict_http:
                     print("Proxy request failed; strict mode enabled.")
