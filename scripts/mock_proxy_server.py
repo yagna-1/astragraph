@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 BLOCKED_TOOLS = {"export_data", "delete_record"}
 
@@ -59,7 +59,7 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=7070)
     args = parser.parse_args()
 
-    server = HTTPServer((args.host, args.port), Handler)
+    server = ThreadingHTTPServer((args.host, args.port), Handler)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
