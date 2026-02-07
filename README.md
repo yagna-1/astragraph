@@ -4,6 +4,12 @@ Policy-enforced observability for tool-using, multi-agent systems.
 
 AstraGraph sits in front of MCP and A2A traffic, evaluates every action against policy, and writes a causal graph plus audit trail you can query in real time.
 
+[![CI](https://img.shields.io/github/actions/workflow/status/yagna-1/astragraph/ci.yaml?branch=main&label=CI&style=for-the-badge)](https://github.com/yagna-1/astragraph/actions/workflows/ci.yaml)
+[![Rust](https://img.shields.io/badge/Rust-Workspace-f74c00?style=for-the-badge&logo=rust)](https://www.rust-lang.org/)
+[![Python](https://img.shields.io/badge/Python-3.11%2B-3776ab?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![Dashboard](https://img.shields.io/badge/Dashboard-React%20%2B%20Vite-1f7a8c?style=for-the-badge)](dashboard/)
+[![License](https://img.shields.io/badge/License-Apache--2.0-2f855a?style=for-the-badge)](LICENSE)
+
 ## Why AstraGraph
 
 - **Prevent unsafe tool calls before execution** with fail-closed enforcement.
@@ -14,6 +20,14 @@ AstraGraph sits in front of MCP and A2A traffic, evaluates every action against 
 ## System Architecture
 
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{
+'primaryColor':'#e6fffa',
+'primaryTextColor':'#102a43',
+'primaryBorderColor':'#1f7a8c',
+'lineColor':'#1f7a8c',
+'secondaryColor':'#f0fff4',
+'tertiaryColor':'#fffaf0'
+}}}%%
 flowchart LR
     AGENTS["Agents (MCP + A2A)"] --> PROXY["AstraGraph Proxy (Rust)"]
     PROXY --> POLICY["Policy Service (Rust)"]
@@ -23,11 +37,32 @@ flowchart LR
     POLICY --> DASH
     POLICY --> POLICYFILES["Policy YAML Files"]
     GRAPH --> DATASTORE["Graph + Audit Data"]
+
+    classDef edge fill:#e6fffa,stroke:#1f7a8c,stroke-width:2px,color:#102a43;
+    classDef core fill:#fffaf0,stroke:#f59e0b,stroke-width:2px,color:#102a43;
+    classDef store fill:#f0fff4,stroke:#2f855a,stroke-width:2px,color:#102a43;
+
+    class AGENTS,DASH edge;
+    class PROXY,POLICY,GRAPH,VERIFIER core;
+    class POLICYFILES,DATASTORE store;
 ```
 
 ## Request Decision Flow
 
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{
+'primaryColor':'#f7fafc',
+'primaryTextColor':'#102a43',
+'primaryBorderColor':'#2d3748',
+'actorBorder':'#1f7a8c',
+'actorBkg':'#e6fffa',
+'actorTextColor':'#102a43',
+'signalColor':'#1f7a8c',
+'signalTextColor':'#102a43',
+'labelBoxBkgColor':'#fffaf0',
+'labelBoxBorderColor':'#f59e0b',
+'labelTextColor':'#102a43'
+}}}%%
 sequenceDiagram
     participant A as Agent
     participant P as Proxy
