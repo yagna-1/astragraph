@@ -9,6 +9,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: dtolnay/rust-toolchain@stable
       - name: Install Python dependencies
         run: pip install pytest grpcio-tools
       - name: Generate protobuf code
@@ -34,10 +38,31 @@ jobs:
         run: |
           python3 scripts/mock_proxy_server.py --port 7070 &
           echo $! > /tmp/mock_proxy.pid
-      - name: Latency benchmark
-        run: python3 benchmarks/proxy_latency.py --iterations 100 --concurrency 16 --p99-target-ms 20 --require-success
+      - name: Latency benchmark (shared-runner smoke gate)
+        run: python3 benchmarks/proxy_latency.py --iterations 100 --concurrency 16 --p99-target-ms 2000 --require-success
       - name: AgentBench FAR evaluation
         run: python3 eval/agentbench_eval.py --dataset eval/agentbench.jsonl --proxy-url http://127.0.0.1:7070/mcp/tools/call --max-far 0.05 --require-inputs --strict-http
+      - name: Stop mock proxy fixture
+        if: ${{ always() }}
+        run: |
+          if [ -f /tmp/mock_proxy.pid ]; then kill "$(cat /tmp/mock_proxy.pid)" || true; fi
+
+  perf-gate:
+    if: ${{ vars.ENABLE_PERF_CI == 'true' }}
+    runs-on: [self-hosted, perf]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Python dependencies
+        run: pip install requests
+      - name: Start mock proxy fixture
+        run: |
+          python3 scripts/mock_proxy_server.py --port 7070 &
+          echo $! > /tmp/mock_proxy.pid
+      - name: Latency benchmark (strict p99)
+        run: python3 benchmarks/proxy_latency.py --iterations 100 --concurrency 16 --p99-target-ms 20 --require-success
       - name: Stop mock proxy fixture
         if: ${{ always() }}
         run: |
@@ -48,6 +73,10 @@ jobs:
     runs-on: [self-hosted, gpu]
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: dtolnay/rust-toolchain@stable
       - name: Install Python dependencies
         run: pip install -r requirements.txt
       - name: Generate protobuf code
