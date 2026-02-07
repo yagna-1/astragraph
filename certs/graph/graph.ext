@@ -1,0 +1,11 @@
+basicConstraints=CA:FALSE
+subjectKeyIdentifier=hash
+authorityKeyIdentifier=keyid,issuer
+keyUsage = digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth, clientAuth
+subjectAltName = @alt_names
+[alt_names]
+DNS.1 = graph
+DNS.2 = astragraph-graph
+DNS.3 = localhost
+IP.1 = 127.0.0.1

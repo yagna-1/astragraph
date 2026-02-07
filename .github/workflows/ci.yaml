@@ -1,0 +1,66 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Python dependencies
+        run: pip install pytest grpcio-tools
+      - name: Generate protobuf code
+        run: make proto-gen
+      - name: Rust clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Rust unit tests
+        run: cargo test --workspace
+      - name: Python integration tests
+        run: pytest tests/integration/ -v
+      - name: Generate mTLS certs for E2E stack
+        run: make certs
+      - name: Run dockerized three-agent E2E gate
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d otel-collector graph policy verifier proxy lead-scorer proposal-writer contract-reviewer
+          python3 scripts/e2e_three_agent_gate.py --timeout-secs 900
+      - name: Tear down dockerized E2E stack
+        if: ${{ always() }}
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.e2e.yml logs --no-color || true
+          docker compose -f docker-compose.yml -f docker-compose.e2e.yml down -v --remove-orphans || true
+      - name: Start mock proxy fixture
+        run: |
+          python3 scripts/mock_proxy_server.py --port 7070 &
+          echo $! > /tmp/mock_proxy.pid
+      - name: Latency benchmark
+        run: python3 benchmarks/proxy_latency.py --iterations 100 --concurrency 16 --p99-target-ms 20 --require-success
+      - name: AgentBench FAR evaluation
+        run: python3 eval/agentbench_eval.py --dataset eval/agentbench.jsonl --proxy-url http://127.0.0.1:7070/mcp/tools/call --max-far 0.05 --require-inputs --strict-http
+      - name: Stop mock proxy fixture
+        if: ${{ always() }}
+        run: |
+          if [ -f /tmp/mock_proxy.pid ]; then kill "$(cat /tmp/mock_proxy.pid)" || true; fi
+
+  gpu-eval:
+    if: ${{ vars.ENABLE_GPU_CI == 'true' }}
+    runs-on: [self-hosted, gpu]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+      - name: Generate protobuf code
+        run: make proto-gen
+      - name: Distillation pipeline smoke test
+        run: python verifier/distillation/train.py --data-dir /tmp/ag-data --output-dir /tmp/ag-artifacts
+      - name: Start mock proxy fixture
+        run: |
+          python3 scripts/mock_proxy_server.py --port 7070 &
+          echo $! > /tmp/mock_proxy.pid
+      - name: AgentBench FAR evaluation (GPU path)
+        run: python3 eval/agentbench_eval.py --dataset eval/agentbench.jsonl --proxy-url http://127.0.0.1:7070/mcp/tools/call --max-far 0.05 --require-inputs --strict-http
+      - name: Stop mock proxy fixture
+        if: ${{ always() }}
+        run: |
+          if [ -f /tmp/mock_proxy.pid ]; then kill "$(cat /tmp/mock_proxy.pid)" || true; fi

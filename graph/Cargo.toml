@@ -1,0 +1,24 @@
+[package]
+name = "astragraph-graph"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+petgraph = "0.6"
+axum = "0.7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+opentelemetry = "0.31"
+opentelemetry_sdk = { version = "0.31", features = ["metrics", "rt-tokio"] }
+regex = "1"
+astragraph-proto = { path = "../proto" }
+tonic = { version = "0.11", features = ["tls"] }
+tokio-stream = "0.1"
+opentelemetry-otlp = { version = "0.31", features = ["trace", "metrics", "grpc-tonic"] }
+tracing = "0.1.44"
+tracing-subscriber = "0.3.22"
+tracing-opentelemetry = "0.32.1"
+reqwest = { version = "0.13.1", features = ["blocking", "json", "rustls-native-certs"] }
+jsonwebtoken = { version = "10.3.0", default-features = false, features = ["rust_crypto", "use_pem"] }
+prost-types = "0.12"

@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-graph
+  labels:
+    app: {{ .Release.Name }}-graph
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ .Release.Name }}-graph
+  ports:
+    - name: rest
+      port: {{ .Values.graph.restPort }}
+      targetPort: {{ .Values.graph.restPort }}
+    - name: grpc
+      port: {{ .Values.graph.grpcPort }}
+      targetPort: {{ .Values.graph.grpcPort }}

@@ -1,0 +1,102 @@
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.95.0
+    command: ["--config=/etc/otel/config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel/config.yaml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+
+  graph:
+    image: rust:1.88
+    working_dir: /app
+    volumes:
+      - .:/app
+      - ./certs:/app/certs
+    command: bash -c "cargo run -p astragraph-graph"
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      ASTRAGRAPH_GRAPH_REST_ADDR: 0.0.0.0:8080
+      ASTRAGRAPH_GRAPH_GRPC_ADDR: 0.0.0.0:9090
+      ASTRAGRAPH_GRAPH_TLS_CERT: /app/certs/graph/graph.crt
+      ASTRAGRAPH_GRAPH_TLS_KEY: /app/certs/graph/graph.key
+      ASTRAGRAPH_GRAPH_TLS_CA: /app/certs/ca/ca.crt
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+    depends_on:
+      - otel-collector
+
+  policy:
+    image: rust:1.88
+    working_dir: /app
+    volumes:
+      - .:/app
+      - ./certs:/app/certs
+    command: bash -c "cargo run -p astragraph-policy"
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      ASTRAGRAPH_POLICY_REST_ADDR: 0.0.0.0:8081
+      ASTRAGRAPH_POLICY_GRPC_ADDR: 0.0.0.0:9091
+      ASTRAGRAPH_POLICY_TLS_CERT: /app/certs/policy/policy.crt
+      ASTRAGRAPH_POLICY_TLS_KEY: /app/certs/policy/policy.key
+      ASTRAGRAPH_POLICY_TLS_CA: /app/certs/ca/ca.crt
+      ASTRAGRAPH_AUTH_DISABLED: "true"
+    ports:
+      - "8081:8081"
+      - "9091:9091"
+    depends_on:
+      - otel-collector
+
+  verifier:
+    image: python:3.11
+    working_dir: /app
+    volumes:
+      - .:/app
+      - ./certs:/app/certs
+    command: bash -lc "pip install -r requirements.txt && python verifier/server.py"
+    environment:
+      ASTRAGRAPH_VERIFIER_GRPC_ADDR: 0.0.0.0:8082
+      ASTRAGRAPH_VERIFIER_TLS_CERT: /app/certs/verifier/verifier.crt
+      ASTRAGRAPH_VERIFIER_TLS_KEY: /app/certs/verifier/verifier.key
+      ASTRAGRAPH_VERIFIER_TLS_CA: /app/certs/ca/ca.crt
+    ports:
+      - "8082:8082"
+    depends_on:
+      - otel-collector
+
+  proxy:
+    image: rust:1.88
+    working_dir: /app
+    volumes:
+      - .:/app
+      - ./certs:/app/certs
+    command: bash -c "cargo run -p astragraph-proxy"
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      ASTRAGRAPH_GRAPH_GRPC_ADDR: https://graph:9090
+      ASTRAGRAPH_POLICY_GRPC_ADDR: https://policy:9091
+      ASTRAGRAPH_VERIFIER_GRPC_ADDR: https://verifier:8082
+      ASTRAGRAPH_PROXY_TLS_CERT: /app/certs/proxy/proxy.crt
+      ASTRAGRAPH_PROXY_TLS_KEY: /app/certs/proxy/proxy.key
+      ASTRAGRAPH_PROXY_TLS_CA: /app/certs/ca/ca.crt
+      ASTRAGRAPH_MCP_CHILD_COMMAND: /bin/cat
+      ASTRAGRAPH_PROXY_HTTP_ADDR: 0.0.0.0:7070
+      ASTRAGRAPH_MCP_UPSTREAM: http://host.docker.internal:7071
+      ASTRAGRAPH_A2A_UPSTREAM: http://host.docker.internal:7072
+    ports:
+      - "7070:7070"
+    depends_on:
+      - graph
+      - policy
+      - verifier
+
+  dashboard:
+    image: node:20
+    working_dir: /app
+    volumes:
+      - ./dashboard:/app
+    command: bash -lc "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+    ports:
+      - "5173:5173"

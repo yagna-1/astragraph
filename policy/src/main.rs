@@ -1,0 +1,245 @@
+mod auth;
+mod evaluator;
+mod grpc;
+mod parser;
+mod store;
+mod telemetry;
+mod tls;
+mod watcher;
+
+use astragraph_proto::astragraph::policy_service_server::PolicyServiceServer;
+use auth::AuthState;
+use axum::{
+    extract::{Path, State},
+    http::{HeaderMap, Request, StatusCode},
+    middleware::{self, Next},
+    response::Response,
+    routing::{get, post},
+    Json, Router,
+};
+use parser::AgentPolicy;
+use serde::Deserialize;
+use serde_json::json;
+use std::env;
+use std::fs;
+use std::net::SocketAddr;
+use std::path::PathBuf;
+use std::sync::{Arc, RwLock};
+use store::{PolicyStore, PolicySummary};
+use tokio::net::TcpListener;
+use tonic::transport::Server;
+
+#[derive(Clone)]
+struct AppState {
+    store: Arc<RwLock<PolicyStore>>,
+    auth: AuthState,
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    telemetry::init();
+
+    let store = Arc::new(RwLock::new(load_policies("policies")));
+    let auth = AuthState::new();
+    let state = AppState {
+        store: store.clone(),
+        auth,
+    };
+
+    let rest_app = Router::new()
+        .route("/policies", get(list_policies))
+        .route("/policies/:name", get(get_policy))
+        .route("/policies/validate", post(validate_policy))
+        .route("/policies/:name/history", get(get_policy_history))
+        .with_state(state.clone())
+        .layer(middleware::from_fn(require_bearer));
+
+    let rest_addr: SocketAddr = env::var("ASTRAGRAPH_POLICY_REST_ADDR")
+        .unwrap_or_else(|_| "0.0.0.0:8081".to_string())
+        .parse()?;
+    let grpc_addr: SocketAddr = env::var("ASTRAGRAPH_POLICY_GRPC_ADDR")
+        .unwrap_or_else(|_| "0.0.0.0:9091".to_string())
+        .parse()?;
+
+    let tls_config = tls::server_tls_config()?;
+    let grpc_service = grpc::PolicyServiceImpl::new(store.clone());
+
+    let watcher_store = store.clone();
+    let _watcher = watcher::start_watcher("policies", move |path| {
+        if let Ok(content) = fs::read_to_string(&path) {
+            if let Ok(policy) = parser::parse_policy(&content) {
+                if let Ok(mut store) = watcher_store.write() {
+                    store.insert(policy);
+                }
+            }
+        }
+    })
+    .ok();
+
+    let rest_listener = TcpListener::bind(rest_addr).await?;
+    let rest_server = async move {
+        axum::serve(rest_listener, rest_app)
+            .await
+            .map_err(|err| -> Box<dyn std::error::Error + Send + Sync> { Box::new(err) })
+    };
+
+    let grpc_server = async move {
+        Server::builder()
+            .tls_config(tls_config)?
+            .add_service(PolicyServiceServer::new(grpc_service))
+            .serve(grpc_addr)
+            .await
+            .map_err(|err| -> Box<dyn std::error::Error + Send + Sync> { Box::new(err) })
+    };
+
+    tokio::try_join!(rest_server, grpc_server)?;
+    Ok(())
+}
+
+fn load_policies(dir: &str) -> PolicyStore {
+    let mut store = PolicyStore::new();
+    let path = PathBuf::from(dir);
+    if let Ok(entries) = fs::read_dir(path) {
+        for entry in entries.flatten() {
+            if let Ok(content) = fs::read_to_string(entry.path()) {
+                if let Ok(policy) = parser::parse_policy(&content) {
+                    store.insert(policy);
+                }
+            }
+        }
+    }
+    store
+}
+
+async fn require_bearer(
+    request: Request<axum::body::Body>,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    let headers = request.headers();
+    if !has_bearer(headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    Ok(next.run(request).await)
+}
+
+fn has_bearer(headers: &HeaderMap) -> bool {
+    headers
+        .get("authorization")
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.starts_with("Bearer "))
+        .unwrap_or(false)
+}
+
+async fn list_policies(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<PolicySummary>>, StatusCode> {
+    state
+        .auth
+        .ensure_role(
+            headers.get("authorization").and_then(|v| v.to_str().ok()),
+            &["read", "admin", "audit"],
+        )
+        .await
+        .map_err(|err| match err {
+            auth::AuthError::Unauthorized => StatusCode::UNAUTHORIZED,
+            auth::AuthError::Forbidden => StatusCode::FORBIDDEN,
+        })?;
+
+    let store = state
+        .store
+        .read()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(store.list()))
+}
+
+async fn get_policy(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(name): Path<String>,
+) -> Result<Json<PolicyWithHistoryResponse>, StatusCode> {
+    state
+        .auth
+        .ensure_role(
+            headers.get("authorization").and_then(|v| v.to_str().ok()),
+            &["read", "admin", "audit"],
+        )
+        .await
+        .map_err(|err| match err {
+            auth::AuthError::Unauthorized => StatusCode::UNAUTHORIZED,
+            auth::AuthError::Forbidden => StatusCode::FORBIDDEN,
+        })?;
+
+    let store = state
+        .store
+        .read()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let policy = store.get(&name).ok_or(StatusCode::NOT_FOUND)?;
+    Ok(Json(PolicyWithHistoryResponse {
+        policy: policy.clone(),
+        history: store.history(&name),
+        status: "active".to_string(),
+    }))
+}
+
+#[derive(Debug, Deserialize)]
+struct ValidationRequest {
+    yaml: String,
+}
+
+async fn validate_policy(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<ValidationRequest>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    state
+        .auth
+        .ensure_role(
+            headers.get("authorization").and_then(|v| v.to_str().ok()),
+            &["admin"],
+        )
+        .await
+        .map_err(|err| match err {
+            auth::AuthError::Unauthorized => StatusCode::UNAUTHORIZED,
+            auth::AuthError::Forbidden => StatusCode::FORBIDDEN,
+        })?;
+
+    telemetry::record_evaluation("validate");
+    match parser::parse_policy(&request.yaml) {
+        Ok(_) => Ok(Json(json!({ "valid": true }))),
+        Err(err) => Ok(Json(
+            json!({ "valid": false, "error": format!("{:?}", err) }),
+        )),
+    }
+}
+
+async fn get_policy_history(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(name): Path<String>,
+) -> Result<Json<Vec<store::PolicyHistoryItem>>, StatusCode> {
+    state
+        .auth
+        .ensure_role(
+            headers.get("authorization").and_then(|v| v.to_str().ok()),
+            &["read", "admin", "audit"],
+        )
+        .await
+        .map_err(|err| match err {
+            auth::AuthError::Unauthorized => StatusCode::UNAUTHORIZED,
+            auth::AuthError::Forbidden => StatusCode::FORBIDDEN,
+        })?;
+
+    let store = state
+        .store
+        .read()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(store.history(&name)))
+}
+
+#[derive(Debug, serde::Serialize)]
+struct PolicyWithHistoryResponse {
+    policy: AgentPolicy,
+    history: Vec<store::PolicyHistoryItem>,
+    status: String,
+}

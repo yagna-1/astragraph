@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-policy
+  labels:
+    app: {{ .Release.Name }}-policy
+spec:
+  replicas: {{ .Values.policy.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-policy
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-policy
+    spec:
+      containers:
+        - name: policy
+          image: {{ .Values.policy.image }}
+          ports:
+            - containerPort: {{ .Values.policy.restPort }}
+            - containerPort: {{ .Values.policy.grpcPort }}
+          env:
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://{{ .Release.Name }}-otel-collector:{{ .Values.otelCollector.servicePort }}
+            - name: ASTRAGRAPH_POLICY_REST_ADDR
+              value: 0.0.0.0:{{ .Values.policy.restPort }}
+            - name: ASTRAGRAPH_POLICY_GRPC_ADDR
+              value: 0.0.0.0:{{ .Values.policy.grpcPort }}
+            - name: ASTRAGRAPH_POLICY_TLS_CERT
+              value: /etc/astragraph/tls/policy.crt
+            - name: ASTRAGRAPH_POLICY_TLS_KEY
+              value: /etc/astragraph/tls/policy.key
+            - name: ASTRAGRAPH_POLICY_TLS_CA
+              value: /etc/astragraph/tls/ca.crt
+          volumeMounts:
+            - name: policies
+              mountPath: {{ .Values.policy.policiesDir }}
+            - name: tls
+              mountPath: /etc/astragraph/tls
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /policies
+              port: {{ .Values.policy.restPort }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /policies
+              port: {{ .Values.policy.restPort }}
+            initialDelaySeconds: 10
+            periodSeconds: 20
+      volumes:
+        - name: policies
+          configMap:
+            name: {{ .Release.Name }}-policies
+        - name: tls
+          secret:
+            secretName: {{ .Release.Name }}-tls

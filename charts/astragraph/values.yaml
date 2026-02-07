@@ -1,0 +1,62 @@
+proxy:
+  image: astragraph/proxy:latest
+  replicas: 3
+  servicePort: 7070
+  grpcPort: 8443
+  mcpUpstream: "http://mcp-upstream:7071"
+  a2aUpstream: "http://a2a-upstream:7072"
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "512Mi"
+    limits:
+      cpu: "1"
+      memory: "1Gi"
+
+graph:
+  image: astragraph/graph:latest
+  replicas: 2
+  restPort: 8080
+  grpcPort: 9090
+  persistence:
+    enabled: true
+    flushIntervalSec: 60
+
+policy:
+  image: astragraph/policy:latest
+  replicas: 2
+  restPort: 8081
+  grpcPort: 9091
+  policiesDir: "/etc/astragraph/policies"
+
+verifier:
+  image: astragraph/verifier:latest
+  replicas: 2
+  grpcPort: 8082
+  nodeSelector:
+    nvidia.com/gpu: "true"
+  resources:
+    limits:
+      nvidia.com/gpu: 1
+      memory: "12Gi"
+  model: "LiquidAI/LFM2.5-1.2B-Thinking"
+
+dashboard:
+  image: astragraph/dashboard:latest
+  replicas: 1
+  servicePort: 3000
+
+otelCollector:
+  image: otel/opentelemetry-collector:0.103.0
+  servicePort: 4317
+
+tls:
+  ca: ""
+  proxyCrt: ""
+  proxyKey: ""
+  graphCrt: ""
+  graphKey: ""
+  policyCrt: ""
+  policyKey: ""
+  verifierCrt: ""
+  verifierKey: ""

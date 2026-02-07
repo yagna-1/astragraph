@@ -1,0 +1,25 @@
+policy_cache_ttl_ms = 500
+fail_closed = true
+agent_id = "agent-unknown"
+policy_id = ""
+allow_without_trace_tools = []
+trace_mode = "absent"
+
+[mcp]
+child_command = ""
+child_args = []
+
+[grpc]
+graph_addr = "https://127.0.0.1:9090"
+policy_addr = "https://127.0.0.1:9091"
+verifier_addr = "https://127.0.0.1:8080"
+
+[tls]
+cert_path = "certs/proxy/proxy.crt"
+key_path = "certs/proxy/proxy.key"
+ca_path = "certs/ca/ca.crt"
+
+[http]
+listen_addr = "0.0.0.0:7070"
+mcp_upstream = "http://127.0.0.1:7071"
+a2a_upstream = "http://127.0.0.1:7072"

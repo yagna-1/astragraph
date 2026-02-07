@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-dashboard
+  labels:
+    app: {{ .Release.Name }}-dashboard
+spec:
+  replicas: {{ .Values.dashboard.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-dashboard
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-dashboard
+    spec:
+      containers:
+        - name: dashboard
+          image: {{ .Values.dashboard.image }}
+          ports:
+            - containerPort: {{ .Values.dashboard.servicePort }}

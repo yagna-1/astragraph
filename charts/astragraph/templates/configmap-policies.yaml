@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-policies
+data:
+  finance_approval.yaml: |
+    apiVersion: astragraph.io/v1
+    kind: AgentPolicy
+    metadata:
+      name: finance-approval-guardrails
+      version: "2.1"
+      owner: "security-team@company.com"
+    spec:
+      agents:
+        - name: finance-approver
+          tier: 3
+          allowed_tools:
+            - approve_invoice
+            - reject_invoice
+          blocked_tools:
+            - export_data
+            - delete_record
+      rules:
+        - id: "rule-fin-001"
+          description: "No approval over $50K without confirmation"
+          condition: "action.tool == approve_invoice AND action.args.amount > 50000"
+          action: BLOCK
+          require_confirmation: true
+      verification:
+        threshold: 0.7
+        model: "lfm2.5-1.2b-distilled-v2"
+        fallback: BLOCK

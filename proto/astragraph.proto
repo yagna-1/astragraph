@@ -1,0 +1,152 @@
+syntax = "proto3";
+
+package astragraph.v1;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+enum NodeType {
+  THINKING = 0;
+  ACTION = 1;
+  HANDOFF = 2;
+  VERIFICATION = 3;
+}
+
+enum ActionStatus {
+  PENDING = 0;
+  ALLOWED = 1;
+  BLOCKED = 2;
+}
+
+enum EdgeType {
+  CAUSED_BY = 0;
+  INFORMED_BY = 1;
+  VERIFIED_BY = 2;
+}
+
+enum FallbackMode {
+  FALLBACK_BLOCK = 0;
+  FALLBACK_ALLOW = 1;
+  FALLBACK_QUEUE = 2;
+}
+
+message GraphNode {
+  string id = 1;                    // UUID
+  NodeType type = 2;
+  string agent_id = 3;
+  string workflow_id = 4;
+  google.protobuf.Timestamp ts = 5;
+  oneof payload {
+    ThinkingPayload thinking = 10;
+    ActionPayload action = 11;
+    HandoffPayload handoff = 12;
+    VerificationPayload verification = 13;
+  }
+}
+
+message ThinkingPayload {
+  string content = 1;              // raw CoT text
+  string model_name = 2;
+  uint32 token_count = 3;
+  string trace_id = 4;             // links to parent agent session
+}
+
+message ActionPayload {
+  string action_type = 1;          // "tool_call" | "a2a_handoff"
+  string tool_name = 2;
+  google.protobuf.Struct arguments = 3;
+  ActionStatus status = 4;
+}
+
+message HandoffPayload {
+  string source_agent_id = 1;
+  string target_agent_id = 2;
+  string task_id = 3;
+  string context_hash = 4;         // hash of context passed
+}
+
+message VerificationPayload {
+  string parent_node_id = 1;
+  float deviation_score = 2;
+  string policy_id = 3;
+  ActionStatus verdict = 4;
+  string verifier_model = 5;
+  uint32 latency_ms = 6;
+  string verifier_thinking = 7;    // verifier's own CoT
+}
+
+message Edge {
+  string from = 1;
+  string to = 2;
+  EdgeType type = 3;
+}
+
+message DriftPathRequest {
+  string graph_id = 1;
+  string node_id = 2;
+  float threshold = 3;
+}
+
+message DriftPathResponse {
+  repeated string node_ids = 1;
+  string origin = 2;
+}
+
+message InsertNodeRequest {
+  GraphNode node = 1;
+}
+
+message InsertNodeResponse {
+  string node_id = 1;
+}
+
+message LinkEdgeRequest {
+  Edge edge = 1;
+}
+
+message LinkEdgeResponse {}
+
+message PolicyEvaluationRequest {
+  string agent_id = 1;
+  string tool_name = 2;
+  google.protobuf.Struct arguments = 3;
+  string policy_id = 4;
+}
+
+message PolicyEvaluationResponse {
+  bool allowed = 1;
+  string rule_id = 2;
+  float threshold = 3;
+  FallbackMode fallback = 4;
+  bool require_confirmation = 5;
+}
+
+message VerifierRequest {
+  string policy_text = 1;
+  string agent_reasoning = 2;
+  string agent_action = 3;
+}
+
+message VerifierResponse {
+  float deviation_score = 1;
+  string verifier_model = 2;
+  uint32 latency_ms = 3;
+  string verifier_thinking = 4;
+}
+
+service GraphService {
+  rpc InsertNode(InsertNodeRequest) returns (InsertNodeResponse);
+  rpc LinkEdge(LinkEdgeRequest) returns (LinkEdgeResponse);
+  rpc StreamNodes(stream InsertNodeRequest) returns (stream InsertNodeResponse);
+  rpc StreamEdges(stream LinkEdgeRequest) returns (stream LinkEdgeResponse);
+  rpc GetDriftPath(DriftPathRequest) returns (DriftPathResponse);
+}
+
+service PolicyService {
+  rpc EvaluateAction(PolicyEvaluationRequest) returns (PolicyEvaluationResponse);
+}
+
+service VerifierService {
+  rpc ScoreAction(VerifierRequest) returns (VerifierResponse);
+  rpc StreamScore(stream VerifierRequest) returns (stream VerifierResponse);
+}

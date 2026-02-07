@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-proxy
+  labels:
+    app: {{ .Release.Name }}-proxy
+spec:
+  replicas: {{ .Values.proxy.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-proxy
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-proxy
+    spec:
+      containers:
+        - name: proxy
+          image: {{ .Values.proxy.image }}
+          ports:
+            - containerPort: {{ .Values.proxy.servicePort }}
+            - containerPort: {{ .Values.proxy.grpcPort }}
+          env:
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://{{ .Release.Name }}-otel-collector:{{ .Values.otelCollector.servicePort }}
+            - name: ASTRAGRAPH_GRAPH_GRPC_ADDR
+              value: https://{{ .Release.Name }}-graph:{{ .Values.graph.grpcPort }}
+            - name: ASTRAGRAPH_POLICY_GRPC_ADDR
+              value: https://{{ .Release.Name }}-policy:{{ .Values.policy.grpcPort }}
+            - name: ASTRAGRAPH_VERIFIER_GRPC_ADDR
+              value: https://{{ .Release.Name }}-verifier:{{ .Values.verifier.grpcPort }}
+            - name: ASTRAGRAPH_PROXY_TLS_CERT
+              value: /etc/astragraph/tls/proxy.crt
+            - name: ASTRAGRAPH_PROXY_TLS_KEY
+              value: /etc/astragraph/tls/proxy.key
+            - name: ASTRAGRAPH_PROXY_TLS_CA
+              value: /etc/astragraph/tls/ca.crt
+            - name: ASTRAGRAPH_MCP_CHILD_COMMAND
+              value: /bin/cat
+            - name: ASTRAGRAPH_PROXY_HTTP_ADDR
+              value: 0.0.0.0:{{ .Values.proxy.servicePort }}
+            - name: ASTRAGRAPH_MCP_UPSTREAM
+              value: {{ .Values.proxy.mcpUpstream | quote }}
+            - name: ASTRAGRAPH_A2A_UPSTREAM
+              value: {{ .Values.proxy.a2aUpstream | quote }}
+          volumeMounts:
+            - name: tls
+              mountPath: /etc/astragraph/tls
+              readOnly: true
+          resources:
+            {{- toYaml .Values.proxy.resources | nindent 12 }}
+          readinessProbe:
+            tcpSocket:
+              port: {{ .Values.proxy.servicePort }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: {{ .Values.proxy.servicePort }}
+            initialDelaySeconds: 10
+            periodSeconds: 20
+      volumes:
+        - name: tls
+          secret:
+            secretName: {{ .Release.Name }}-tls

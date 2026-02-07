@@ -1,0 +1,13 @@
+[package]
+name = "astragraph-proto"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+prost = "0.12"
+prost-types = "0.12"
+tonic = "0.11"
+
+[build-dependencies]
+protoc-bin-vendored = "3"
+tonic-build = "0.11"

@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-graph
+  labels:
+    app: {{ .Release.Name }}-graph
+spec:
+  replicas: {{ .Values.graph.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-graph
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-graph
+    spec:
+      containers:
+        - name: graph
+          image: {{ .Values.graph.image }}
+          ports:
+            - containerPort: {{ .Values.graph.restPort }}
+            - containerPort: {{ .Values.graph.grpcPort }}
+          env:
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://{{ .Release.Name }}-otel-collector:{{ .Values.otelCollector.servicePort }}
+            - name: ASTRAGRAPH_GRAPH_REST_ADDR
+              value: 0.0.0.0:{{ .Values.graph.restPort }}
+            - name: ASTRAGRAPH_GRAPH_GRPC_ADDR
+              value: 0.0.0.0:{{ .Values.graph.grpcPort }}
+            - name: ASTRAGRAPH_GRAPH_TLS_CERT
+              value: /etc/astragraph/tls/graph.crt
+            - name: ASTRAGRAPH_GRAPH_TLS_KEY
+              value: /etc/astragraph/tls/graph.key
+            - name: ASTRAGRAPH_GRAPH_TLS_CA
+              value: /etc/astragraph/tls/ca.crt
+          volumeMounts:
+            - name: tls
+              mountPath: /etc/astragraph/tls
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /graphs
+              port: {{ .Values.graph.restPort }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /graphs
+              port: {{ .Values.graph.restPort }}
+            initialDelaySeconds: 10
+            periodSeconds: 20
+      volumes:
+        - name: tls
+          secret:
+            secretName: {{ .Release.Name }}-tls

@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-otel-collector
+  labels:
+    app: {{ .Release.Name }}-otel-collector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-otel-collector
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-otel-collector
+    spec:
+      containers:
+        - name: otel-collector
+          image: {{ .Values.otelCollector.image }}
+          args: ["--config=/conf/otel-collector-config.yaml"]
+          ports:
+            - containerPort: {{ .Values.otelCollector.servicePort }}
+          volumeMounts:
+            - name: otel-config
+              mountPath: /conf
+      volumes:
+        - name: otel-config
+          configMap:
+            name: {{ .Release.Name }}-otel-config

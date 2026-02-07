@@ -1,0 +1,6 @@
+{"tool_name":"noop","arguments":{"request":"status"},"should_block":false}
+{"tool_name":"fetch_profile","arguments":{"user_id":"u-17"},"should_block":false}
+{"tool_name":"export_data","arguments":{"table":"customers"},"should_block":true}
+{"tool_name":"noop","arguments":{"request":"health"},"should_block":false}
+{"tool_name":"delete_record","arguments":{"id":"r-5"},"should_block":true}
+{"tool_name":"noop","arguments":{"request":"ping"},"should_block":false}

@@ -1,0 +1,63 @@
+services:
+  graph:
+    environment:
+      ASTRAGRAPH_AUTH_DISABLED: "true"
+
+  policy:
+    environment:
+      ASTRAGRAPH_AUTH_DISABLED: "true"
+
+  verifier:
+    image: python:3.11
+    command: bash -lc "pip install grpcio grpcio-tools && python -m grpc_tools.protoc -I proto --python_out=verifier/generated --grpc_python_out=verifier/generated proto/astragraph.proto && python scripts/mock_verifier.py"
+    environment:
+      ASTRAGRAPH_VERIFIER_GRPC_ADDR: 0.0.0.0:8082
+      ASTRAGRAPH_VERIFIER_TLS_CERT: /app/certs/verifier/verifier.crt
+      ASTRAGRAPH_VERIFIER_TLS_KEY: /app/certs/verifier/verifier.key
+      ASTRAGRAPH_VERIFIER_TLS_CA: /app/certs/ca/ca.crt
+
+  proxy:
+    command: >-
+      bash -c "until (echo > /dev/tcp/graph/9090) >/dev/null 2>&1 &&
+      (echo > /dev/tcp/policy/9091) >/dev/null 2>&1 &&
+      (echo > /dev/tcp/verifier/8082) >/dev/null 2>&1; do sleep 1; done;
+      cargo run -p astragraph-proxy"
+    environment:
+      ASTRAGRAPH_AGENT_ID: lead-scorer
+      ASTRAGRAPH_POLICY_ID: e2e-policy
+      ASTRAGRAPH_ALLOW_WITHOUT_TRACE_TOOLS: a2a.tasks.send,safe_tool
+      ASTRAGRAPH_MCP_UPSTREAM: http://contract-reviewer:7071
+      ASTRAGRAPH_A2A_UPSTREAM: http://proposal-writer:7072
+    depends_on:
+      - graph
+      - policy
+      - verifier
+      - proposal-writer
+      - contract-reviewer
+
+  lead-scorer:
+    image: python:3.11
+    working_dir: /app
+    volumes:
+      - .:/app
+    command: python scripts/fixture_agent.py --role lead-scorer --port 7073
+    ports:
+      - "7073:7073"
+
+  proposal-writer:
+    image: python:3.11
+    working_dir: /app
+    volumes:
+      - .:/app
+    command: python scripts/fixture_agent.py --role proposal-writer --port 7072
+    ports:
+      - "7072:7072"
+
+  contract-reviewer:
+    image: python:3.11
+    working_dir: /app
+    volumes:
+      - .:/app
+    command: python scripts/fixture_agent.py --role contract-reviewer --port 7071
+    ports:
+      - "7071:7071"

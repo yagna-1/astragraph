@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-verifier
+  labels:
+    app: {{ .Release.Name }}-verifier
+spec:
+  replicas: {{ .Values.verifier.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-verifier
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-verifier
+    spec:
+      nodeSelector:
+        {{- toYaml .Values.verifier.nodeSelector | nindent 8 }}
+      containers:
+        - name: verifier
+          image: {{ .Values.verifier.image }}
+          ports:
+            - containerPort: {{ .Values.verifier.grpcPort }}
+          env:
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://{{ .Release.Name }}-otel-collector:{{ .Values.otelCollector.servicePort }}
+            - name: ASTRAGRAPH_VERIFIER_TLS_CERT
+              value: /etc/astragraph/tls/verifier.crt
+            - name: ASTRAGRAPH_VERIFIER_TLS_KEY
+              value: /etc/astragraph/tls/verifier.key
+            - name: ASTRAGRAPH_VERIFIER_TLS_CA
+              value: /etc/astragraph/tls/ca.crt
+            - name: ASTRAGRAPH_VERIFIER_MODEL
+              value: {{ .Values.verifier.model | quote }}
+          volumeMounts:
+            - name: tls
+              mountPath: /etc/astragraph/tls
+              readOnly: true
+          resources:
+            {{- toYaml .Values.verifier.resources | nindent 12 }}
+          readinessProbe:
+            tcpSocket:
+              port: {{ .Values.verifier.grpcPort }}
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          livenessProbe:
+            tcpSocket:
+              port: {{ .Values.verifier.grpcPort }}
+            initialDelaySeconds: 20
+            periodSeconds: 30
+      volumes:
+        - name: tls
+          secret:
+            secretName: {{ .Release.Name }}-tls

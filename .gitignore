@@ -1,0 +1,21 @@
+.DS_Store
+.idea/
+.vscode/
+.cursor/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+
+# Rust
+target/
+
+# Local data / artifacts
+ASTRAGRAPH/certs/
+ASTRAGRAPH/data/
+
