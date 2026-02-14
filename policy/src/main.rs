@@ -25,7 +25,7 @@ use std::fs;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
-use store::{PolicyStore, PolicySummary};
+use store::{PolicyRolloutState, PolicyStore, PolicySummary, StoreError};
 use tokio::net::TcpListener;
 use tonic::transport::Server;
 
@@ -51,6 +51,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .route("/policies/:name", get(get_policy))
         .route("/policies/validate", post(validate_policy))
         .route("/policies/:name/history", get(get_policy_history))
+        .route(
+            "/policies/:name/rollout",
+            get(get_policy_rollout)
+                .post(start_policy_rollout)
+                .delete(stop_policy_rollout),
+        )
+        .route("/policies/:name/rollout/promote", post(promote_policy_rollout))
+        .route("/policies/:name/rollback", post(rollback_policy_rollout))
         .with_state(state.clone())
         .layer(middleware::from_fn(require_bearer));
 
@@ -187,6 +195,12 @@ struct ValidationRequest {
     yaml: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct StartRolloutRequest {
+    yaml: String,
+    percentage: u8,
+}
+
 async fn validate_policy(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -235,6 +249,133 @@ async fn get_policy_history(
         .read()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(store.history(&name)))
+}
+
+async fn get_policy_rollout(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(name): Path<String>,
+) -> Result<Json<Option<PolicyRolloutState>>, StatusCode> {
+    state
+        .auth
+        .ensure_role(
+            headers.get("authorization").and_then(|v| v.to_str().ok()),
+            &["read", "admin", "audit"],
+        )
+        .await
+        .map_err(|err| match err {
+            auth::AuthError::Unauthorized => StatusCode::UNAUTHORIZED,
+            auth::AuthError::Forbidden => StatusCode::FORBIDDEN,
+        })?;
+
+    let store = state
+        .store
+        .read()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(store.rollout(&name)))
+}
+
+async fn start_policy_rollout(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(name): Path<String>,
+    Json(request): Json<StartRolloutRequest>,
+) -> Result<Json<PolicyRolloutState>, StatusCode> {
+    state
+        .auth
+        .ensure_role(
+            headers.get("authorization").and_then(|v| v.to_str().ok()),
+            &["admin"],
+        )
+        .await
+        .map_err(|err| match err {
+            auth::AuthError::Unauthorized => StatusCode::UNAUTHORIZED,
+            auth::AuthError::Forbidden => StatusCode::FORBIDDEN,
+        })?;
+
+    let candidate = parser::parse_policy(&request.yaml).map_err(|_| StatusCode::BAD_REQUEST)?;
+    let mut store = state
+        .store
+        .write()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let rollout = store
+        .start_rollout(&name, candidate, request.percentage)
+        .map_err(map_store_err)?;
+    Ok(Json(rollout))
+}
+
+async fn stop_policy_rollout(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(name): Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    state
+        .auth
+        .ensure_role(
+            headers.get("authorization").and_then(|v| v.to_str().ok()),
+            &["admin"],
+        )
+        .await
+        .map_err(|err| match err {
+            auth::AuthError::Unauthorized => StatusCode::UNAUTHORIZED,
+            auth::AuthError::Forbidden => StatusCode::FORBIDDEN,
+        })?;
+
+    let mut store = state
+        .store
+        .write()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if !store.stop_rollout(&name) {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    Ok(Json(json!({
+        "policy": name,
+        "rollback": "completed",
+        "active_rollout": false
+    })))
+}
+
+async fn rollback_policy_rollout(
+    state: State<AppState>,
+    headers: HeaderMap,
+    name: Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    stop_policy_rollout(state, headers, name).await
+}
+
+async fn promote_policy_rollout(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(name): Path<String>,
+) -> Result<Json<PolicySummary>, StatusCode> {
+    state
+        .auth
+        .ensure_role(
+            headers.get("authorization").and_then(|v| v.to_str().ok()),
+            &["admin"],
+        )
+        .await
+        .map_err(|err| match err {
+            auth::AuthError::Unauthorized => StatusCode::UNAUTHORIZED,
+            auth::AuthError::Forbidden => StatusCode::FORBIDDEN,
+        })?;
+
+    let mut store = state
+        .store
+        .write()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let promoted = store.promote_rollout(&name).map_err(map_store_err)?;
+    Ok(Json(promoted))
+}
+
+fn map_store_err(err: StoreError) -> StatusCode {
+    match err {
+        StoreError::NotFound => StatusCode::NOT_FOUND,
+        StoreError::InvalidInput(message) => {
+            tracing::warn!("invalid rollout request: {message}");
+            StatusCode::BAD_REQUEST
+        }
+    }
 }
 
 #[derive(Debug, serde::Serialize)]

@@ -154,11 +154,19 @@ fn is_within_time_window(now: &str, window: &TimeWindow) -> bool {
 }
 
 fn parse_time_to_minutes(value: &str) -> Option<u32> {
-    if let Some((_, time)) = value.trim().rsplit_once('T') {
-        return parse_hhmm(time.trim_end_matches('Z'));
+    let trimmed = value.trim();
+    if let Some((date, time)) = trimmed.split_once('T') {
+        if date.contains('-')
+            && time
+                .chars()
+                .next()
+                .map(|ch| ch.is_ascii_digit())
+                .unwrap_or(false)
+        {
+            return parse_hhmm(time.trim_end_matches('Z'));
+        }
     }
-    let trimmed = value.trim().trim_end_matches("UTC").trim();
-    parse_hhmm(trimmed)
+    parse_hhmm(trimmed.trim_end_matches("UTC").trim())
 }
 
 fn parse_hhmm(value: &str) -> Option<u32> {
@@ -189,7 +197,12 @@ fn result_from_policy(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::{AgentPolicy, AgentSpec, Metadata, PolicySpec, RuleSpec, VerificationSpec};
+    use crate::parser::{
+        parse_policy, AgentPolicy, AgentSpec, Metadata, PolicySpec, RuleSpec, VerificationSpec,
+    };
+    use serde::Deserialize;
+    use std::fs;
+    use std::path::Path;
 
     fn base_policy() -> AgentPolicy {
         AgentPolicy {
@@ -254,5 +267,133 @@ mod tests {
         let result = evaluate_policy(&policy, &context).expect("evaluation");
         assert_eq!(result.decision, RuleAction::Block);
         assert_eq!(result.matched_rule_id.as_deref(), Some("rule-1"));
+    }
+
+    #[test]
+    fn parses_utc_hhmm_without_iso_t_separator() {
+        assert_eq!(parse_time_to_minutes("21:10 UTC"), Some(1270));
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct RegressionPack {
+        name: String,
+        policy: String,
+        cases: Vec<RegressionCase>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct RegressionCase {
+        name: String,
+        agent: String,
+        tool: String,
+        #[serde(default)]
+        args: HashMap<String, serde_yaml::Value>,
+        #[serde(default)]
+        now_utc: Option<String>,
+        expect: RegressionExpectation,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct RegressionExpectation {
+        decision: RuleAction,
+        #[serde(default)]
+        rule_id: Option<String>,
+        #[serde(default)]
+        threshold: Option<f32>,
+        #[serde(default)]
+        fallback: Option<FallbackMode>,
+        #[serde(default)]
+        require_confirmation: Option<bool>,
+    }
+
+    fn regression_pack_paths() -> Vec<std::path::PathBuf> {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/policy_regressions");
+        let mut paths = Vec::new();
+        if let Ok(entries) = fs::read_dir(root) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let ext = path.extension().and_then(|value| value.to_str());
+                if matches!(ext, Some("yaml" | "yml")) {
+                    paths.push(path);
+                }
+            }
+        }
+        paths.sort();
+        paths
+    }
+
+    #[test]
+    fn policy_regression_packs_pass() {
+        let packs = regression_pack_paths();
+        assert!(!packs.is_empty(), "no regression packs found");
+
+        for pack_path in packs {
+            let raw = fs::read_to_string(&pack_path)
+                .unwrap_or_else(|err| panic!("failed reading {}: {err}", pack_path.display()));
+            let pack: RegressionPack = serde_yaml::from_str(&raw)
+                .unwrap_or_else(|err| panic!("failed parsing {}: {err}", pack_path.display()));
+            let policy = parse_policy(&pack.policy).unwrap_or_else(|err| {
+                panic!(
+                    "pack '{}' has invalid policy in {}: {:?}",
+                    pack.name,
+                    pack_path.display(),
+                    err
+                )
+            });
+
+            for case in pack.cases {
+                let context = PolicyContext {
+                    agent_name: &case.agent,
+                    tool_name: &case.tool,
+                    args: case.args.clone(),
+                    now_utc: case.now_utc.as_deref(),
+                };
+                let result = evaluate_policy(&policy, &context).unwrap_or_else(|_| {
+                    panic!(
+                        "case '{}' in pack '{}' failed evaluation",
+                        case.name, pack.name
+                    )
+                });
+
+                assert_eq!(
+                    result.decision, case.expect.decision,
+                    "pack '{}' case '{}' decision mismatch",
+                    pack.name, case.name
+                );
+                if let Some(expected_rule_id) = case.expect.rule_id.as_deref() {
+                    assert_eq!(
+                        result.matched_rule_id.as_deref(),
+                        Some(expected_rule_id),
+                        "pack '{}' case '{}' rule mismatch",
+                        pack.name,
+                        case.name
+                    );
+                }
+                if let Some(expected_threshold) = case.expect.threshold {
+                    assert!(
+                        (result.threshold - expected_threshold).abs() < 1e-6,
+                        "pack '{}' case '{}' threshold mismatch: expected {}, got {}",
+                        pack.name,
+                        case.name,
+                        expected_threshold,
+                        result.threshold
+                    );
+                }
+                if let Some(expected_fallback) = case.expect.fallback {
+                    assert_eq!(
+                        result.fallback, expected_fallback,
+                        "pack '{}' case '{}' fallback mismatch",
+                        pack.name, case.name
+                    );
+                }
+                if let Some(expected_confirmation) = case.expect.require_confirmation {
+                    assert_eq!(
+                        result.require_confirmation, expected_confirmation,
+                        "pack '{}' case '{}' confirmation mismatch",
+                        pack.name, case.name
+                    );
+                }
+            }
+        }
     }
 }

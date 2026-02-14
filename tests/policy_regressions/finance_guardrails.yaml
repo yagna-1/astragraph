@@ -1,0 +1,89 @@
+name: finance-guardrails-core
+policy: |
+  apiVersion: astragraph.io/v1
+  kind: AgentPolicy
+  metadata:
+    name: finance-approval-guardrails
+    version: "2.1"
+    owner: security-team@company.com
+  spec:
+    agents:
+      - name: finance-approver
+        tier: 3
+        allowed_tools:
+          - approve_invoice
+          - export_data
+        blocked_tools: []
+    rules:
+      - id: rule-export-block
+        description: Block export path
+        condition: action.tool == export_data
+        action: BLOCK
+      - id: rule-fin-001
+        description: No approval over 50k
+        condition: action.tool == approve_invoice AND action.args.amount > 50000
+        action: BLOCK
+        require_confirmation: true
+      - id: rule-fin-hours
+        description: Approvals only in business hours
+        condition: action.tool == approve_invoice
+        action: ALLOW
+        time_window:
+          start: "09:00 UTC"
+          end: "17:00 UTC"
+        outside_window_action: BLOCK
+    verification:
+      threshold: 0.7
+      model: lfm2.5-1.2b-distilled-v2
+      fallback: QUEUE
+cases:
+  - name: export_data_always_blocked
+    agent: finance-approver
+    tool: export_data
+    args:
+      table: customers
+    expect:
+      decision: BLOCK
+      rule_id: rule-export-block
+      threshold: 0.7
+      fallback: QUEUE
+      require_confirmation: false
+
+  - name: high_amount_requires_block
+    agent: finance-approver
+    tool: approve_invoice
+    args:
+      amount: 60000
+    now_utc: "10:30 UTC"
+    expect:
+      decision: BLOCK
+      rule_id: rule-fin-001
+      threshold: 0.7
+      fallback: QUEUE
+      require_confirmation: true
+
+  - name: in_window_low_amount_allowed
+    agent: finance-approver
+    tool: approve_invoice
+    args:
+      amount: 1000
+    now_utc: "10:30 UTC"
+    expect:
+      decision: ALLOW
+      rule_id: rule-fin-hours
+      threshold: 0.7
+      fallback: QUEUE
+      require_confirmation: false
+
+  - name: out_of_window_low_amount_blocked
+    agent: finance-approver
+    tool: approve_invoice
+    args:
+      amount: 1000
+    now_utc: "21:10 UTC"
+    expect:
+      decision: BLOCK
+      rule_id: rule-fin-hours
+      threshold: 0.7
+      fallback: QUEUE
+      require_confirmation: false

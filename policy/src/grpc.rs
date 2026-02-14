@@ -28,17 +28,25 @@ impl PolicyService for PolicyServiceImpl {
     ) -> Result<Response<PolicyEvaluationResponse>, Status> {
         let _span = info_span!("policy.evaluate_action").entered();
         let payload = request.into_inner();
-        let policy_id = payload.policy_id;
+        let policy_id = payload.policy_id.clone();
         let store = self.store.read().map_err(|_| Status::internal("store"))?;
-        let policy = if policy_id.is_empty() {
+        let policy_name = if policy_id.is_empty() {
             store
                 .policies()
-                .values()
+                .keys()
                 .next()
+                .cloned()
                 .ok_or(Status::not_found("policy"))?
         } else {
-            store.get(&policy_id).ok_or(Status::not_found("policy"))?
+            policy_id
         };
+        let rollout_key = format!(
+            "{}|{}|{:?}",
+            payload.agent_id, payload.tool_name, payload.arguments
+        );
+        let policy = store
+            .resolve_for_evaluation(&policy_name, &rollout_key)
+            .ok_or(Status::not_found("policy"))?;
 
         let mut args = struct_to_yaml(payload.arguments);
         let now_utc = args

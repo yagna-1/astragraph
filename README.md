@@ -93,6 +93,12 @@ From this directory:
 ./scripts/e2e_run.sh
 ```
 
+To run E2E with the real verifier service path instead of the deterministic mock:
+
+```bash
+./scripts/e2e_run.sh --real-verifier
+```
+
 The script:
 
 1. Generates local TLS certs (`make certs`)
@@ -132,6 +138,27 @@ make certs
 make dev-test
 make dev-dashboard
 make proto-gen
+cargo test -p astragraph-policy policy_regression_packs_pass
+```
+
+### Policy simulation CLI (what-if decisions)
+
+Single scenario:
+
+```bash
+cargo run -p astragraph-policy --bin policy_simulator -- \
+  --policy policies/e2e-policy.yaml \
+  --agent lead-scorer \
+  --tool export_data \
+  --args '{"table":"customers"}' \
+  --now-utc "10:30 UTC"
+```
+
+Regression pack:
+
+```bash
+cargo run -p astragraph-policy --bin policy_simulator -- \
+  --pack tests/policy_regressions/finance_guardrails.yaml --strict
 ```
 
 ### Dashboard
@@ -158,6 +185,10 @@ Policy service (`:8081`, requires bearer token):
 - `GET /policies/:name`
 - `POST /policies/validate`
 - `GET /policies/:name/history`
+- `GET /policies/:name/rollout`
+- `POST /policies/:name/rollout` (start/update canary rollout)
+- `POST /policies/:name/rollout/promote` (promote candidate to stable)
+- `POST /policies/:name/rollback` (rollback active rollout)
 
 Proxy HTTP entrypoint (`:7070`):
 
@@ -176,6 +207,17 @@ curl -H "Authorization: Bearer dev-token" \
   "http://localhost:8080/audit/violations?workflow_id=wf-three-agent-e2e"
 ```
 
+```bash
+curl -X POST -H "Authorization: Bearer dev-token" -H "Content-Type: application/json" \
+  "http://localhost:8081/policies/e2e-policy/rollout" \
+  -d '{"percentage":20,"yaml":"apiVersion: astragraph.io/v1\nkind: AgentPolicy\nmetadata:\n  name: e2e-policy\n  version: \"1.1\"\n  owner: \"astragraph-dev@local\"\nspec:\n  agents:\n    - name: lead-scorer\n      tier: 3\n      allowed_tools: [safe_tool, export_data, a2a.tasks.send]\n      blocked_tools: []\n  rules:\n    - id: rule-export-block\n      description: Block export_data in e2e gate\n      condition: \"action.tool == export_data\"\n      action: BLOCK\n  verification:\n    threshold: 0.7\n    model: \"mock-verifier\"\n    fallback: ALLOW\n"}'
+```
+
+```bash
+curl -X POST -H "Authorization: Bearer dev-token" \
+  "http://localhost:8081/policies/e2e-policy/rollback"
+```
+
 ## Repository Layout
 
 - `proxy/`: Rust sidecar proxy and enforcement layer (MCP + A2A interceptors)
@@ -183,6 +225,7 @@ curl -H "Authorization: Bearer dev-token" \
 - `graph/`: Rust graph and audit service (REST + gRPC)
 - `verifier/`: Python verifier and distillation/scoring paths
 - `dashboard/`: React + Vite operator UI
+- `connectors/`: LangGraph, CrewAI, AutoGen adapter skeletons
 - `scripts/`: E2E gate, fixtures, mocks, cert generation
 - `tests/`: integration and synthetic test assets
 - `charts/`: Helm chart manifests
@@ -195,10 +238,10 @@ curl -H "Authorization: Bearer dev-token" \
 
 ## Roadmap-Friendly Extensions
 
-- Replace `scripts/mock_verifier.py` with your production verifier backend.
+- Use `./scripts/e2e_run.sh --real-verifier` to exercise the real verifier path in E2E.
 - Add organization auth provider and stricter role mapping for graph/policy APIs.
 - Back graph/audit storage with durable external DB for high-volume workloads.
-- Add CI policy regression suites using the synthetic traces in `tests/synthetic/`.
+- Extend policy regression packs in `tests/policy_regressions/` and keep them green in CI.
 
 ## License
 

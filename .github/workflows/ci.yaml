@@ -21,6 +21,8 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Rust unit tests
         run: cargo test --workspace
+      - name: Policy regression packs
+        run: cargo test -p astragraph-policy policy_regression_packs_pass
       - name: Python integration tests
         run: pytest tests/integration/ -v
       - name: Generate mTLS certs for E2E stack

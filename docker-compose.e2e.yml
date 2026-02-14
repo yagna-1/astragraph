@@ -9,7 +9,13 @@ services:
 
   verifier:
     image: python:3.11
-    command: bash -lc "pip install grpcio grpcio-tools && python -m grpc_tools.protoc -I proto --python_out=verifier/generated --grpc_python_out=verifier/generated proto/astragraph.proto && python scripts/mock_verifier.py"
+    command: >-
+      bash -lc "if [ \"${ASTRAGRAPH_E2E_VERIFIER_MODE:-mock}\" = \"real\" ]; then
+      pip install -r requirements.txt && python verifier/server.py;
+      else
+      pip install grpcio grpcio-tools &&
+      python -m grpc_tools.protoc -I proto --python_out=verifier/generated --grpc_python_out=verifier/generated proto/astragraph.proto &&
+      python scripts/mock_verifier.py; fi"
     environment:
       ASTRAGRAPH_VERIFIER_GRPC_ADDR: 0.0.0.0:8082
       ASTRAGRAPH_VERIFIER_TLS_CERT: /app/certs/verifier/verifier.crt
