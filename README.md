@@ -218,6 +218,16 @@ curl -X POST -H "Authorization: Bearer dev-token" \
   "http://localhost:8081/policies/e2e-policy/rollback"
 ```
 
+## Rollout Metrics and Alert Hooks
+
+- Policy service emits rollout telemetry:
+  - `astragraph.policy.rollout.events.total` (labels: `policy`, `event`, `status`)
+  - `astragraph.policy.rollout.active` (active rollout up/down counter by policy)
+- Optional webhook hook for rollout lifecycle events:
+  - `ASTRAGRAPH_POLICY_ALERT_WEBHOOK_URL`
+  - `ASTRAGRAPH_POLICY_ALERT_WEBHOOK_TOKEN` (optional bearer token)
+- Prometheus alert rule examples: `ops/prometheus/astragraph-policy-rollout-alerts.yaml`
+
 ## Repository Layout
 
 - `proxy/`: Rust sidecar proxy and enforcement layer (MCP + A2A interceptors)
@@ -226,6 +236,7 @@ curl -X POST -H "Authorization: Bearer dev-token" \
 - `verifier/`: Python verifier and distillation/scoring paths
 - `dashboard/`: React + Vite operator UI
 - `connectors/`: LangGraph, CrewAI, AutoGen adapter skeletons
+- `ops/`: ops artifacts (example Prometheus rollout alert rules)
 - `scripts/`: E2E gate, fixtures, mocks, cert generation
 - `tests/`: integration and synthetic test assets
 - `charts/`: Helm chart manifests

@@ -1,3 +1,4 @@
+mod alerting;
 mod auth;
 mod evaluator;
 mod grpc;
@@ -293,14 +294,59 @@ async fn start_policy_rollout(
             auth::AuthError::Forbidden => StatusCode::FORBIDDEN,
         })?;
 
-    let candidate = parser::parse_policy(&request.yaml).map_err(|_| StatusCode::BAD_REQUEST)?;
-    let mut store = state
-        .store
-        .write()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let rollout = store
-        .start_rollout(&name, candidate, request.percentage)
-        .map_err(map_store_err)?;
+    let candidate = match parser::parse_policy(&request.yaml) {
+        Ok(policy) => policy,
+        Err(_) => {
+            telemetry::record_rollout_event(&name, "start", "failed");
+            alerting::emit_rollout_event(
+                "rollout_start_failed",
+                &name,
+                "warning",
+                json!({"reason": "invalid_policy_yaml"}),
+            )
+            .await;
+            return Err(StatusCode::BAD_REQUEST);
+        }
+    };
+    let start_result: Result<(PolicyRolloutState, bool), StoreError> = {
+        let mut store = state
+            .store
+            .write()
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let had_active_rollout = store.rollout(&name).is_some();
+        store
+            .start_rollout(&name, candidate, request.percentage)
+            .map(|rollout| (rollout, had_active_rollout))
+    };
+    let (rollout, had_active_rollout) = match start_result {
+        Ok(value) => value,
+        Err(err) => {
+            telemetry::record_rollout_event(&name, "start", "failed");
+            alerting::emit_rollout_event(
+                "rollout_start_failed",
+                &name,
+                "warning",
+                json!({"reason": format!("{:?}", err)}),
+            )
+            .await;
+            return Err(map_store_err(err));
+        }
+    };
+    telemetry::record_rollout_event(&name, "start", "success");
+    if !had_active_rollout {
+        telemetry::record_rollout_active(&name, 1);
+    }
+    alerting::emit_rollout_event(
+        "rollout_start",
+        &name,
+        "info",
+        json!({
+            "percentage": rollout.percentage,
+            "stable_version": rollout.stable_version,
+            "candidate_version": rollout.candidate_version
+        }),
+    )
+    .await;
     Ok(Json(rollout))
 }
 
@@ -321,13 +367,33 @@ async fn stop_policy_rollout(
             auth::AuthError::Forbidden => StatusCode::FORBIDDEN,
         })?;
 
-    let mut store = state
-        .store
-        .write()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    if !store.stop_rollout(&name) {
+    let stopped = {
+        let mut store = state
+            .store
+            .write()
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        store.stop_rollout(&name)
+    };
+    if !stopped {
+        telemetry::record_rollout_event(&name, "rollback", "failed");
+        alerting::emit_rollout_event(
+            "rollout_rollback_failed",
+            &name,
+            "warning",
+            json!({"reason": "no_active_rollout"}),
+        )
+        .await;
         return Err(StatusCode::NOT_FOUND);
     }
+    telemetry::record_rollout_event(&name, "rollback", "success");
+    telemetry::record_rollout_active(&name, -1);
+    alerting::emit_rollout_event(
+        "rollout_rollback",
+        &name,
+        "warning",
+        json!({"action": "rollback"}),
+    )
+    .await;
     Ok(Json(json!({
         "policy": name,
         "rollback": "completed",
@@ -360,11 +426,36 @@ async fn promote_policy_rollout(
             auth::AuthError::Forbidden => StatusCode::FORBIDDEN,
         })?;
 
-    let mut store = state
-        .store
-        .write()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let promoted = store.promote_rollout(&name).map_err(map_store_err)?;
+    let promote_result = {
+        let mut store = state
+            .store
+            .write()
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        store.promote_rollout(&name)
+    };
+    let promoted = match promote_result {
+        Ok(value) => value,
+        Err(err) => {
+            telemetry::record_rollout_event(&name, "promote", "failed");
+            alerting::emit_rollout_event(
+                "rollout_promote_failed",
+                &name,
+                "warning",
+                json!({"reason": format!("{:?}", err)}),
+            )
+            .await;
+            return Err(map_store_err(err));
+        }
+    };
+    telemetry::record_rollout_event(&name, "promote", "success");
+    telemetry::record_rollout_active(&name, -1);
+    alerting::emit_rollout_event(
+        "rollout_promote",
+        &name,
+        "info",
+        json!({"version": promoted.version}),
+    )
+    .await;
     Ok(Json(promoted))
 }
 

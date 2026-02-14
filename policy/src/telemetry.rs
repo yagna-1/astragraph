@@ -1,4 +1,4 @@
-use opentelemetry::metrics::Counter;
+use opentelemetry::metrics::{Counter, UpDownCounter};
 use opentelemetry::trace::TracerProvider;
 use opentelemetry::{global, KeyValue};
 use opentelemetry_otlp::{MetricExporter, SpanExporter, WithExportConfig};
@@ -11,6 +11,8 @@ use tracing_subscriber::prelude::*;
 #[derive(Clone)]
 pub struct Telemetry {
     evaluations_total: Counter<u64>,
+    rollout_events_total: Counter<u64>,
+    rollout_active: UpDownCounter<i64>,
 }
 
 static TELEMETRY: OnceLock<Telemetry> = OnceLock::new();
@@ -61,6 +63,14 @@ pub fn init() {
             .u64_counter("astragraph.policy.evaluations.total")
             .with_description("Total policy evaluations")
             .build(),
+        rollout_events_total: meter
+            .u64_counter("astragraph.policy.rollout.events.total")
+            .with_description("Total policy rollout lifecycle events")
+            .build(),
+        rollout_active: meter
+            .i64_up_down_counter("astragraph.policy.rollout.active")
+            .with_description("Number of active policy rollouts")
+            .build(),
     };
 
     let _ = TELEMETRY.set(telemetry);
@@ -73,6 +83,32 @@ pub fn record_evaluation(decision: &str) {
             1,
             &[
                 KeyValue::new("decision", decision.to_string()),
+                KeyValue::new("service", "policy"),
+            ],
+        );
+    }
+}
+
+pub fn record_rollout_event(policy: &str, event: &str, status: &str) {
+    if let Some(telemetry) = TELEMETRY.get() {
+        telemetry.rollout_events_total.add(
+            1,
+            &[
+                KeyValue::new("policy", policy.to_string()),
+                KeyValue::new("event", event.to_string()),
+                KeyValue::new("status", status.to_string()),
+                KeyValue::new("service", "policy"),
+            ],
+        );
+    }
+}
+
+pub fn record_rollout_active(policy: &str, delta: i64) {
+    if let Some(telemetry) = TELEMETRY.get() {
+        telemetry.rollout_active.add(
+            delta,
+            &[
+                KeyValue::new("policy", policy.to_string()),
                 KeyValue::new("service", "policy"),
             ],
         );

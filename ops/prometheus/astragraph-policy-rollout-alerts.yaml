@@ -1,0 +1,20 @@
+groups:
+  - name: astragraph-policy-rollout
+    rules:
+      - alert: AstraGraphPolicyRolloutLongRunning
+        expr: sum by (policy) (astragraph_policy_rollout_active{service="policy"}) > 0
+        for: 2h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Policy rollout active too long"
+          description: "AstraGraph policy rollout has remained active for over 2 hours."
+
+      - alert: AstraGraphPolicyRolloutFailures
+        expr: sum by (policy) (increase(astragraph_policy_rollout_events_total{service="policy",status="failed"}[15m])) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Policy rollout failures detected"
+          description: "One or more policy rollout lifecycle operations failed in the last 15 minutes."
