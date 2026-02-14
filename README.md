@@ -99,12 +99,19 @@ To run E2E with the real verifier service path instead of the deterministic mock
 ./scripts/e2e_run.sh --real-verifier
 ```
 
+To include verifier-outage queue fallback coverage in the E2E run:
+
+```bash
+./scripts/e2e_run.sh --queue-fallback
+```
+
 The script:
 
 1. Generates local TLS certs (`make certs`)
 2. Starts core services + 3 fixture agents via Docker Compose
-3. Runs `scripts/e2e_three_agent_gate.py`
-4. Tears everything down
+3. Runs `scripts/e2e_three_agent_gate.py --scenario standard`
+4. Optionally runs `--scenario queue-fallback` with verifier stopped (`--queue-fallback`)
+5. Tears everything down
 
 Expected final output:
 
@@ -122,6 +129,7 @@ The gate validates all core controls in one run:
 - Block reason includes policy rule (`rule-export-block`)
 - Graph store contains both allowed + blocked action nodes
 - Audit endpoint returns a persisted violation record
+- Queue fallback path returns `POLICY_VIOLATION` envelope with `QUEUE` detail when verifier is unavailable (`--queue-fallback`)
 
 ## Local Development
 
@@ -250,6 +258,7 @@ curl -X POST -H "Authorization: Bearer dev-token" \
 ## Roadmap-Friendly Extensions
 
 - Use `./scripts/e2e_run.sh --real-verifier` to exercise the real verifier path in E2E.
+- Use `./scripts/e2e_run.sh --queue-fallback` to exercise verifier-outage queue fallback coverage.
 - Add organization auth provider and stricter role mapping for graph/policy APIs.
 - Back graph/audit storage with durable external DB for high-volume workloads.
 - Extend policy regression packs in `tests/policy_regressions/` and keep them green in CI.

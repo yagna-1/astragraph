@@ -277,3 +277,51 @@ fn is_poisoning_suspected(description: &str) -> bool {
     ];
     markers.iter().any(|marker| normalized.contains(marker))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::parse_tool_call_from_jsonrpc;
+    use axum::http::Method;
+
+    #[test]
+    fn parse_tool_call_rejects_non_post() {
+        let body = br#"{
+            "jsonrpc": "2.0",
+            "id": "req-1",
+            "method": "tools/call",
+            "params": { "name": "safe_tool", "arguments": {} }
+        }"#;
+        let parsed = parse_tool_call_from_jsonrpc(&Method::GET, "tools/call", body);
+        assert!(parsed.is_none());
+    }
+
+    #[test]
+    fn parse_tool_call_rejects_malformed_json() {
+        let parsed = parse_tool_call_from_jsonrpc(&Method::POST, "tools/call", br#"{ invalid }"#);
+        assert!(parsed.is_none());
+    }
+
+    #[test]
+    fn parse_tool_call_rejects_missing_name() {
+        let body = br#"{
+            "jsonrpc": "2.0",
+            "id": "req-1",
+            "method": "tools/call",
+            "params": { "arguments": {} }
+        }"#;
+        let parsed = parse_tool_call_from_jsonrpc(&Method::POST, "tools/call", body);
+        assert!(parsed.is_none());
+    }
+
+    #[test]
+    fn parse_tool_call_accepts_tools_call_path_suffix() {
+        let body = br#"{
+            "jsonrpc": "2.0",
+            "id": "req-1",
+            "method": "unexpected/method",
+            "params": { "name": "safe_tool", "arguments": { "x": 1 } }
+        }"#;
+        let parsed = parse_tool_call_from_jsonrpc(&Method::POST, "mcp/tools/call", body);
+        assert!(parsed.is_some());
+    }
+}

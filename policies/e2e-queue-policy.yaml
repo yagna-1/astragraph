@@ -1,0 +1,28 @@
+apiVersion: astragraph.io/v1
+kind: AgentPolicy
+metadata:
+  name: e2e-queue-policy
+  version: "1.0"
+  owner: "astragraph-dev@local"
+
+spec:
+  agents:
+    - name: lead-scorer
+      tier: 3
+      allowed_tools:
+        - safe_tool
+        - export_data
+        - a2a.tasks.send
+      blocked_tools: []
+
+  rules:
+    - id: "rule-export-block"
+      description: "Block export_data in e2e queue fallback gate"
+      condition: "action.tool == export_data"
+      action: BLOCK
+      require_confirmation: false
+
+  verification:
+    threshold: 0.7
+    model: "mock-verifier"
+    fallback: QUEUE

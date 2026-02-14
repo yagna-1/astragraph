@@ -629,3 +629,24 @@ fn json_to_value(value: &serde_json::Value) -> Value {
         },
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{queue_response, ToolCallOwned};
+    use serde_json::json;
+
+    #[test]
+    fn queue_response_wraps_queue_detail_in_policy_violation_envelope() {
+        let payload = queue_response(ToolCallOwned {
+            id: Some(json!("req-queue-1")),
+            name: "safe_tool".to_string(),
+            arguments: Some(json!({"foo":"bar"})),
+        });
+
+        let parsed: serde_json::Value = serde_json::from_str(&payload).expect("json response");
+        assert_eq!(parsed["error"]["code"], 403);
+        assert_eq!(parsed["error"]["message"], "POLICY_VIOLATION");
+        assert_eq!(parsed["error"]["data"]["code"], 503);
+        assert_eq!(parsed["error"]["data"]["message"], "QUEUE");
+    }
+}

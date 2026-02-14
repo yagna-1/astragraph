@@ -30,7 +30,7 @@ services:
       cargo run -p astragraph-proxy"
     environment:
       ASTRAGRAPH_AGENT_ID: lead-scorer
-      ASTRAGRAPH_POLICY_ID: e2e-policy
+      ASTRAGRAPH_POLICY_ID: ${ASTRAGRAPH_POLICY_ID:-e2e-policy}
       ASTRAGRAPH_ALLOW_WITHOUT_TRACE_TOOLS: a2a.tasks.send,safe_tool
       ASTRAGRAPH_MCP_UPSTREAM: http://contract-reviewer:7071
       ASTRAGRAPH_A2A_UPSTREAM: http://proposal-writer:7072

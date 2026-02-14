@@ -30,7 +30,11 @@ jobs:
       - name: Run dockerized three-agent E2E gate
         run: |
           docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d otel-collector graph policy verifier proxy lead-scorer proposal-writer contract-reviewer
-          python3 scripts/e2e_three_agent_gate.py --timeout-secs 900
+          python3 scripts/e2e_three_agent_gate.py --timeout-secs 900 --scenario standard
+          docker compose -f docker-compose.yml -f docker-compose.e2e.yml down --remove-orphans
+          ASTRAGRAPH_POLICY_ID=e2e-queue-policy docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d otel-collector graph policy verifier proxy lead-scorer proposal-writer contract-reviewer
+          docker compose -f docker-compose.yml -f docker-compose.e2e.yml stop verifier
+          python3 scripts/e2e_three_agent_gate.py --timeout-secs 900 --scenario queue-fallback
       - name: Tear down dockerized E2E stack
         if: ${{ always() }}
         run: |

@@ -50,19 +50,22 @@ def assert_true(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Run three-agent E2E gate")
-    parser.add_argument("--proxy-base-url", default="http://127.0.0.1:7070")
-    parser.add_argument("--graph-base-url", default="http://127.0.0.1:8080")
-    parser.add_argument("--timeout-secs", type=int, default=120)
-    args = parser.parse_args()
+def get_json(url: str) -> list[dict]:
+    request = urllib.request.Request(
+        url,
+        headers={"authorization": "Bearer dev-token"},
+        method="GET",
+    )
+    with urllib.request.urlopen(request, timeout=5) as response:
+        return json.loads(response.read().decode("utf-8"))
 
-    workflow_id = "wf-three-agent-e2e"
-    mcp_url = f"{args.proxy_base_url.rstrip('/')}/mcp/tools/call"
-    a2a_url = f"{args.proxy_base_url.rstrip('/')}/a2a/tasks/send"
 
-    wait_for_proxy(mcp_url, args.timeout_secs)
-
+def run_standard_gate(
+    workflow_id: str,
+    mcp_url: str,
+    a2a_url: str,
+    graph_base_url: str,
+) -> dict:
     a2a_payload = {
         "id": workflow_id,
         "task_id": "task-three-agent-1",
@@ -102,22 +105,15 @@ def main() -> int:
     status, body = request_json(mcp_url, blocked_payload)
     assert_true(status == 403, f"blocked tool call expected 403, got {status}")
     blocked_json = json.loads(body)
-    assert_true(blocked_json.get("error", {}).get("message") == "POLICY_VIOLATION", "blocked tool did not return policy violation")
-    rule_id = (
-        blocked_json.get("error", {})
-        .get("data", {})
-        .get("rule_id", "")
+    assert_true(
+        blocked_json.get("error", {}).get("message") == "POLICY_VIOLATION",
+        "blocked tool did not return policy violation",
     )
+    rule_id = blocked_json.get("error", {}).get("data", {}).get("rule_id", "")
     assert_true(rule_id == "rule-export-block", f"unexpected rule_id: {rule_id!r}")
 
-    graph_url = f"{args.graph_base_url.rstrip('/')}/graphs/{workflow_id}/nodes"
-    request = urllib.request.Request(
-        graph_url,
-        headers={"authorization": "Bearer dev-token"},
-        method="GET",
-    )
-    with urllib.request.urlopen(request, timeout=5) as response:
-        nodes = json.loads(response.read().decode("utf-8"))
+    graph_url = f"{graph_base_url.rstrip('/')}/graphs/{workflow_id}/nodes"
+    nodes = get_json(graph_url)
     safe_found = any(
         node.get("tool_name") == "safe_tool" and node.get("status") == "allowed"
         for node in nodes
@@ -130,23 +126,88 @@ def main() -> int:
     assert_true(blocked_found, "graph missing blocked export_data action node")
 
     violations_url = (
-        f"{args.graph_base_url.rstrip('/')}/audit/violations?workflow_id={workflow_id}"
+        f"{graph_base_url.rstrip('/')}/audit/violations?workflow_id={workflow_id}"
     )
-    request = urllib.request.Request(
-        violations_url,
-        headers={"authorization": "Bearer dev-token"},
-        method="GET",
-    )
-    with urllib.request.urlopen(request, timeout=5) as response:
-        violations = json.loads(response.read().decode("utf-8"))
+    violations = get_json(violations_url)
     assert_true(len(violations) >= 1, "expected at least one audit violation record")
+    return {"nodes_checked": len(nodes), "violations": len(violations)}
+
+
+def run_queue_fallback_gate(
+    workflow_id: str,
+    mcp_url: str,
+    graph_base_url: str,
+) -> dict:
+    queue_payload = {
+        "jsonrpc": "2.0",
+        "id": workflow_id,
+        "method": "tools/call",
+        "params": {
+            "name": "safe_tool",
+            "arguments": {"thinking": "queue fallback when verifier unavailable"},
+        },
+    }
+    status, body = request_json(mcp_url, queue_payload)
+    assert_true(status == 403, f"queue fallback expected 403, got {status}")
+    queue_json = json.loads(body)
+    error = queue_json.get("error", {})
+    assert_true(
+        error.get("message") == "POLICY_VIOLATION",
+        "queue fallback missing policy violation envelope",
+    )
+    error_data = error.get("data", {})
+    assert_true(
+        isinstance(error_data, dict),
+        "queue fallback missing structured error data",
+    )
+    assert_true(error_data.get("code") == 503, "queue fallback missing code 503")
+    assert_true(error_data.get("message") == "QUEUE", "queue fallback missing QUEUE message")
+
+    graph_url = f"{graph_base_url.rstrip('/')}/graphs/{workflow_id}/nodes"
+    nodes = get_json(graph_url)
+    queued_action_found = any(
+        node.get("tool_name") == "safe_tool" and node.get("status") == "blocked"
+        for node in nodes
+    )
+    assert_true(queued_action_found, "graph missing queued safe_tool action node")
+    return {"nodes_checked": len(nodes), "queue_status": "verified"}
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Run three-agent E2E gate")
+    parser.add_argument("--proxy-base-url", default="http://127.0.0.1:7070")
+    parser.add_argument("--graph-base-url", default="http://127.0.0.1:8080")
+    parser.add_argument("--timeout-secs", type=int, default=120)
+    parser.add_argument(
+        "--scenario",
+        choices=["standard", "queue-fallback"],
+        default="standard",
+    )
+    parser.add_argument("--workflow-id", default=None)
+    args = parser.parse_args()
+
+    workflow_id = args.workflow_id or (
+        "wf-three-agent-e2e"
+        if args.scenario == "standard"
+        else "wf-three-agent-e2e-queue"
+    )
+    mcp_url = f"{args.proxy_base_url.rstrip('/')}/mcp/tools/call"
+    a2a_url = f"{args.proxy_base_url.rstrip('/')}/a2a/tasks/send"
+
+    wait_for_proxy(mcp_url, args.timeout_secs)
+
+    if args.scenario == "standard":
+        result = run_standard_gate(workflow_id, mcp_url, a2a_url, args.graph_base_url)
+    else:
+        result = run_queue_fallback_gate(workflow_id, mcp_url, args.graph_base_url)
+
     print(
         json.dumps(
             {
                 "workflow_id": workflow_id,
-                "nodes_checked": len(nodes),
-                "violations": len(violations),
+                "scenario": args.scenario,
                 "status": "pass",
+                **result,
             }
         )
     )

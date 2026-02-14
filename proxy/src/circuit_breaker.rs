@@ -85,3 +85,93 @@ pub struct BlockResponse {
     pub blocked_action: BlockedAction,
     pub timestamp: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn blocks_when_policy_denies() {
+        let circuit_breaker = CircuitBreaker::new();
+        let decision = circuit_breaker.decide(
+            false,
+            true,
+            false,
+            Some(0.0),
+            0.7,
+            FallbackMode::Allow,
+            true,
+        );
+        assert_eq!(decision, Decision::Block);
+    }
+
+    #[test]
+    fn blocks_when_no_trace_and_not_allowlisted() {
+        let circuit_breaker = CircuitBreaker::new();
+        let decision = circuit_breaker.decide(
+            true,
+            false,
+            false,
+            Some(0.01),
+            0.7,
+            FallbackMode::Allow,
+            true,
+        );
+        assert_eq!(decision, Decision::Block);
+    }
+
+    #[test]
+    fn queues_when_verifier_missing_and_fallback_queue() {
+        let circuit_breaker = CircuitBreaker::new();
+        let decision = circuit_breaker.decide(
+            true,
+            true,
+            false,
+            None,
+            0.7,
+            FallbackMode::Queue,
+            true,
+        );
+        assert_eq!(decision, Decision::Queue);
+    }
+
+    #[test]
+    fn allows_when_score_below_threshold() {
+        let circuit_breaker = CircuitBreaker::new();
+        let decision = circuit_breaker.decide(
+            true,
+            true,
+            false,
+            Some(0.2),
+            0.7,
+            FallbackMode::Block,
+            true,
+        );
+        assert_eq!(decision, Decision::Allow);
+    }
+
+    #[test]
+    fn blocks_when_score_meets_or_exceeds_threshold() {
+        let circuit_breaker = CircuitBreaker::new();
+        let at_threshold = circuit_breaker.decide(
+            true,
+            true,
+            false,
+            Some(0.7),
+            0.7,
+            FallbackMode::Allow,
+            true,
+        );
+        let above_threshold = circuit_breaker.decide(
+            true,
+            true,
+            false,
+            Some(0.9),
+            0.7,
+            FallbackMode::Allow,
+            true,
+        );
+        assert_eq!(at_threshold, Decision::Block);
+        assert_eq!(above_threshold, Decision::Block);
+    }
+}
