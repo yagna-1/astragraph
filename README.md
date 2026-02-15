@@ -193,10 +193,10 @@ Policy service (`:8081`, requires bearer token):
 
 - `GET /policies`
 - `GET /policies/:name`
-- `POST /policies/validate`
+- `POST /policies/validate` (optional `signature` field when bundle signing is enabled)
 - `GET /policies/:name/history`
 - `GET /policies/:name/rollout`
-- `POST /policies/:name/rollout` (start/update canary rollout)
+- `POST /policies/:name/rollout` (start/update canary rollout, optional `signature`)
 - `POST /policies/:name/rollout/promote` (promote candidate to stable)
 - `POST /policies/:name/rollback` (rollback active rollout)
 
@@ -220,7 +220,7 @@ curl -H "Authorization: Bearer dev-token" \
 ```bash
 curl -X POST -H "Authorization: Bearer dev-token" -H "Content-Type: application/json" \
   "http://localhost:8081/policies/e2e-policy/rollout" \
-  -d '{"percentage":20,"yaml":"apiVersion: astragraph.io/v1\nkind: AgentPolicy\nmetadata:\n  name: e2e-policy\n  version: \"1.1\"\n  owner: \"astragraph-dev@local\"\nspec:\n  agents:\n    - name: lead-scorer\n      tier: 3\n      allowed_tools: [safe_tool, review_summary, export_data, a2a.tasks.send]\n      blocked_tools: []\n  rules:\n    - id: rule-export-block\n      description: Block export_data in e2e gate\n      condition: \"action.tool == export_data\"\n      action: BLOCK\n  verification:\n    threshold: 0.7\n    model: \"mock-verifier\"\n    fallback: ALLOW\n"}'
+  -d '{"percentage":20,"yaml":"apiVersion: astragraph.io/v1\nkind: AgentPolicy\nmetadata:\n  name: e2e-policy\n  version: \"1.1\"\n  owner: \"astragraph-dev@local\"\nspec:\n  agents:\n    - name: lead-scorer\n      tier: 3\n      allowed_tools: [safe_tool, review_summary, export_data, a2a.tasks.send]\n      blocked_tools: []\n  rules:\n    - id: rule-export-block\n      description: Block export_data in e2e gate\n      condition: \"action.tool == export_data\"\n      action: BLOCK\n  verification:\n    threshold: 0.7\n    model: \"mock-verifier\"\n    fallback: ALLOW\n","signature":"'"$SIGNATURE"'"}'
 ```
 
 ```bash
@@ -236,6 +236,18 @@ curl -X POST -H "Authorization: Bearer dev-token" \
 - Optional webhook hook for rollout lifecycle events:
   - `ASTRAGRAPH_POLICY_ALERT_WEBHOOK_URL`
   - `ASTRAGRAPH_POLICY_ALERT_WEBHOOK_TOKEN` (optional bearer token)
+- Optional signed policy bundle enforcement:
+  - Set `ASTRAGRAPH_POLICY_BUNDLE_SIGNING_KEY=<shared-secret>` on the policy service.
+  - When enabled, `POST /policies/validate` and `POST /policies/:name/rollout` require `signature` (JWT signed with `HS256` whose payload contains the exact raw YAML under `yaml`).
+  - Signature example:
+
+```bash
+export ASTRAGRAPH_POLICY_BUNDLE_SIGNING_KEY='dev-shared-secret'
+POLICY_YAML="$(cat policies/e2e-policy.yaml)"
+SIGNATURE="$(
+python3 -c "import base64, hashlib, hmac, json, os; y=open('policies/e2e-policy.yaml').read(); h={'alg':'HS256','typ':'JWT'}; c={'yaml':y}; e=lambda o: base64.urlsafe_b64encode(json.dumps(o,separators=(',',':')).encode()).rstrip(b'='); hp=e(h)+b'.'+e(c); s=base64.urlsafe_b64encode(hmac.new(os.environ['ASTRAGRAPH_POLICY_BUNDLE_SIGNING_KEY'].encode(), hp, hashlib.sha256).digest()).rstrip(b'='); print((hp+b'.'+s).decode())"
+)"
+```
 - Prometheus alert rule examples: `ops/prometheus/astragraph-policy-rollout-alerts.yaml`
 
 ## Repository Layout

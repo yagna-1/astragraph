@@ -1,5 +1,6 @@
 mod alerting;
 mod auth;
+mod bundle_signing;
 mod evaluator;
 mod grpc;
 mod parser;
@@ -194,12 +195,16 @@ async fn get_policy(
 #[derive(Debug, Deserialize)]
 struct ValidationRequest {
     yaml: String,
+    #[serde(default)]
+    signature: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct StartRolloutRequest {
     yaml: String,
     percentage: u8,
+    #[serde(default)]
+    signature: Option<String>,
 }
 
 async fn validate_policy(
@@ -218,6 +223,15 @@ async fn validate_policy(
             auth::AuthError::Unauthorized => StatusCode::UNAUTHORIZED,
             auth::AuthError::Forbidden => StatusCode::FORBIDDEN,
         })?;
+
+    if let Err(err) =
+        bundle_signing::verify_yaml_signature(&request.yaml, request.signature.as_deref())
+    {
+        return Ok(Json(json!({
+            "valid": false,
+            "error": format!("policy bundle signature check failed: {}", signature_error_message(err))
+        })));
+    }
 
     telemetry::record_evaluation("validate");
     match parser::parse_policy(&request.yaml) {
@@ -293,6 +307,20 @@ async fn start_policy_rollout(
             auth::AuthError::Unauthorized => StatusCode::UNAUTHORIZED,
             auth::AuthError::Forbidden => StatusCode::FORBIDDEN,
         })?;
+
+    if let Err(err) =
+        bundle_signing::verify_yaml_signature(&request.yaml, request.signature.as_deref())
+    {
+        telemetry::record_rollout_event(&name, "start", "failed");
+        alerting::emit_rollout_event(
+            "rollout_start_failed",
+            &name,
+            "warning",
+            json!({"reason": format!("signature_error: {}", signature_error_message(err))}),
+        )
+        .await;
+        return Err(StatusCode::UNAUTHORIZED);
+    }
 
     let candidate = match parser::parse_policy(&request.yaml) {
         Ok(policy) => policy,
@@ -466,6 +494,14 @@ fn map_store_err(err: StoreError) -> StatusCode {
             tracing::warn!("invalid rollout request: {message}");
             StatusCode::BAD_REQUEST
         }
+    }
+}
+
+fn signature_error_message(err: bundle_signing::SignatureError) -> &'static str {
+    match err {
+        bundle_signing::SignatureError::MissingSignature => "missing signature",
+        bundle_signing::SignatureError::InvalidSignature => "invalid signature",
+        bundle_signing::SignatureError::PayloadMismatch => "signature payload does not match yaml",
     }
 }
 
