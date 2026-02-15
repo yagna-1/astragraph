@@ -124,7 +124,9 @@ Expected final output:
 The gate validates all core controls in one run:
 
 - A2A task handoff succeeds (`/a2a/tasks/send`)
+- Malformed MCP JSON is rejected by upstream (`400 invalid json`)
 - Safe MCP tool call is allowed (`safe_tool`)
+- Missing-trace MCP call is blocked (`review_summary` without `thinking` -> `403 POLICY_VIOLATION`)
 - Risky tool call is blocked (`export_data` -> `403 POLICY_VIOLATION`)
 - Block reason includes policy rule (`rule-export-block`)
 - Graph store contains both allowed + blocked action nodes
@@ -218,7 +220,7 @@ curl -H "Authorization: Bearer dev-token" \
 ```bash
 curl -X POST -H "Authorization: Bearer dev-token" -H "Content-Type: application/json" \
   "http://localhost:8081/policies/e2e-policy/rollout" \
-  -d '{"percentage":20,"yaml":"apiVersion: astragraph.io/v1\nkind: AgentPolicy\nmetadata:\n  name: e2e-policy\n  version: \"1.1\"\n  owner: \"astragraph-dev@local\"\nspec:\n  agents:\n    - name: lead-scorer\n      tier: 3\n      allowed_tools: [safe_tool, export_data, a2a.tasks.send]\n      blocked_tools: []\n  rules:\n    - id: rule-export-block\n      description: Block export_data in e2e gate\n      condition: \"action.tool == export_data\"\n      action: BLOCK\n  verification:\n    threshold: 0.7\n    model: \"mock-verifier\"\n    fallback: ALLOW\n"}'
+  -d '{"percentage":20,"yaml":"apiVersion: astragraph.io/v1\nkind: AgentPolicy\nmetadata:\n  name: e2e-policy\n  version: \"1.1\"\n  owner: \"astragraph-dev@local\"\nspec:\n  agents:\n    - name: lead-scorer\n      tier: 3\n      allowed_tools: [safe_tool, review_summary, export_data, a2a.tasks.send]\n      blocked_tools: []\n  rules:\n    - id: rule-export-block\n      description: Block export_data in e2e gate\n      condition: \"action.tool == export_data\"\n      action: BLOCK\n  verification:\n    threshold: 0.7\n    model: \"mock-verifier\"\n    fallback: ALLOW\n"}'
 ```
 
 ```bash

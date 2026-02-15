@@ -26,6 +26,26 @@ def request_json(url: str, payload: dict, timeout: float = 5.0) -> tuple[int, st
         return error.code, error.read().decode("utf-8")
 
 
+def request_raw(
+    url: str,
+    body: bytes,
+    *,
+    timeout: float = 5.0,
+    content_type: str = "application/json",
+) -> tuple[int, str]:
+    request = urllib.request.Request(
+        url,
+        data=body,
+        headers={"content-type": content_type},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return response.status, response.read().decode("utf-8")
+    except urllib.error.HTTPError as error:
+        return error.code, error.read().decode("utf-8")
+
+
 def wait_for_proxy(url: str, timeout_secs: int) -> None:
     deadline = time.time() + timeout_secs
     probe = {
@@ -79,6 +99,13 @@ def run_standard_gate(
         "a2a stream missing expected task_status completion event",
     )
 
+    malformed_payload = b'{"jsonrpc":"2.0","id":"bad-1","method":"tools/call","params":{"name":"safe_tool","arguments":'
+    malformed_status, _ = request_raw(mcp_url, malformed_payload)
+    assert_true(
+        malformed_status == 400,
+        f"malformed MCP payload expected upstream 400, got {malformed_status}",
+    )
+
     safe_payload = {
         "jsonrpc": "2.0",
         "id": workflow_id,
@@ -92,6 +119,35 @@ def run_standard_gate(
     assert_true(status == 200, f"safe tool call expected 200, got {status}")
     safe_json = json.loads(body)
     assert_true("result" in safe_json, "safe tool response missing result payload")
+
+    missing_trace_payload = {
+        "jsonrpc": "2.0",
+        "id": workflow_id,
+        "method": "tools/call",
+        "params": {
+            "name": "review_summary",
+            "arguments": {"summary": "no explicit reasoning trace"},
+        },
+    }
+    status, body = request_json(mcp_url, missing_trace_payload)
+    assert_true(
+        status == 403,
+        f"missing-trace review_summary expected 403, got {status}",
+    )
+    missing_trace_json = json.loads(body)
+    assert_true(
+        missing_trace_json.get("error", {}).get("message") == "POLICY_VIOLATION",
+        "missing-trace block did not return policy violation",
+    )
+    missing_trace_rule = (
+        missing_trace_json.get("error", {})
+        .get("data", {})
+        .get("rule_id", "unexpected-rule")
+    )
+    assert_true(
+        missing_trace_rule in ("", None),
+        f"missing-trace block expected empty rule_id, got {missing_trace_rule!r}",
+    )
 
     blocked_payload = {
         "jsonrpc": "2.0",
@@ -118,19 +174,31 @@ def run_standard_gate(
         node.get("tool_name") == "safe_tool" and node.get("status") == "allowed"
         for node in nodes
     )
+    missing_trace_found = any(
+        node.get("tool_name") == "review_summary" and node.get("status") == "blocked"
+        for node in nodes
+    )
     blocked_found = any(
         node.get("tool_name") == "export_data" and node.get("status") == "blocked"
         for node in nodes
     )
     assert_true(safe_found, "graph missing allowed safe_tool action node")
+    assert_true(
+        missing_trace_found,
+        "graph missing blocked review_summary action node for missing-trace path",
+    )
     assert_true(blocked_found, "graph missing blocked export_data action node")
 
     violations_url = (
         f"{graph_base_url.rstrip('/')}/audit/violations?workflow_id={workflow_id}"
     )
     violations = get_json(violations_url)
-    assert_true(len(violations) >= 1, "expected at least one audit violation record")
-    return {"nodes_checked": len(nodes), "violations": len(violations)}
+    assert_true(len(violations) >= 2, "expected at least two audit violation records")
+    return {
+        "nodes_checked": len(nodes),
+        "violations": len(violations),
+        "malformed_payload_status": malformed_status,
+    }
 
 
 def run_queue_fallback_gate(

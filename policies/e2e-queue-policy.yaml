@@ -11,6 +11,7 @@ spec:
       tier: 3
       allowed_tools:
         - safe_tool
+        - review_summary
         - export_data
         - a2a.tasks.send
       blocked_tools: []
