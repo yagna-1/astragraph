@@ -36,7 +36,7 @@ flowchart LR
     AGENTS["Agents (MCP + A2A)"] --> PROXY["AstraGraph Proxy (Rust)"]
     PROXY --> POLICY["Policy Service (Rust)"]
     PROXY --> GRAPH["Graph Service (Rust)"]
-    PROXY --> VERIFIER["Verifier Service (gRPC contract, reference impl in Python)"]
+    PROXY --> VERIFIER["Verifier Service (gRPC contract; startup behavior configurable)"]
     GRAPH --> DASH["Dashboard (React/Vite)"]
     POLICY --> DASH
     POLICY --> POLICYFILES["Policy YAML Files"]
@@ -69,13 +69,20 @@ sequenceDiagram
       P-->>A: 403 POLICY_VIOLATION
     else policy allows
       S-->>P: allow + threshold/fallback
-      P->>V: Score deviation
-      V-->>P: score, rationale
-      P->>G: Write action/handoff + verification nodes
-      alt score within threshold
-        P-->>A: Forward to upstream and return result
-      else score violates policy
-        P-->>A: 403 POLICY_VIOLATION
+      P->>V: Score deviation (or timeout)
+      alt verifier unavailable and fallback=QUEUE
+        P->>G: Write queued action/audit metadata
+        P-->>A: 403 POLICY_VIOLATION (QUEUE detail)
+      else verifier response available
+        V-->>P: score, rationale
+        P->>G: Write action + verification metadata
+        alt missing trace and tool not allowlisted
+          P-->>A: 403 POLICY_VIOLATION
+        else score within threshold
+          P-->>A: Forward to upstream and return result
+        else score violates policy
+          P-->>A: 403 POLICY_VIOLATION
+        end
       end
     end
 ```
