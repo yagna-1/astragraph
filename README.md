@@ -32,7 +32,7 @@ flowchart LR
     AGENTS["Agents (MCP + A2A)"] --> PROXY["AstraGraph Proxy (Rust)"]
     PROXY --> POLICY["Policy Service (Rust)"]
     PROXY --> GRAPH["Graph Service (Rust)"]
-    PROXY --> VERIFIER["Verifier Service (Python, required at startup)"]
+    PROXY --> VERIFIER["Verifier Service (gRPC contract, reference impl in Python)"]
     GRAPH --> DASH["Dashboard (React/Vite)"]
     POLICY --> DASH
     POLICY --> POLICYFILES["Policy YAML Files"]
@@ -113,6 +113,14 @@ The script:
 4. Optionally runs `--scenario queue-fallback` with verifier stopped (`--queue-fallback`)
 5. Tears everything down
 
+### Verifier implementation status (important)
+
+- The proxy currently requires a reachable verifier gRPC service at startup.
+- Default E2E mode uses `scripts/mock_verifier.py` for deterministic CI and local testing.
+- `--real-verifier` uses `verifier/server.py` (reference Python implementation).
+- Production deployments should replace the verifier backend with your own service that implements the same gRPC interface documented in `verifier/INTERFACE.md`.
+- If verifier scoring is unavailable and policy fallback is `QUEUE`, AstraGraph returns a queue-fallback policy violation envelope.
+
 Expected final output:
 
 ```json
@@ -157,7 +165,7 @@ Single scenario:
 
 ```bash
 cargo run -p astragraph-policy --bin policy_simulator -- \
-  --policy policies/e2e-policy.yaml \
+  --policy policy-bundles/e2e-policy.yaml \
   --agent lead-scorer \
   --tool export_data \
   --args '{"table":"customers"}' \
@@ -175,7 +183,7 @@ Enable advanced policy mode in simulation:
 
 ```bash
 cargo run -p astragraph-policy --bin policy_simulator -- \
-  --policy policies/e2e-policy.yaml \
+  --policy policy-bundles/e2e-policy.yaml \
   --agent lead-scorer \
   --tool export_data \
   --advanced-mode
@@ -185,7 +193,7 @@ Migrate YAML rules to advanced mode suggestions:
 
 ```bash
 cargo run -p astragraph-policy --bin policy_migrate -- \
-  --input policies/e2e-policy.yaml \
+  --input policy-bundles/e2e-policy.yaml \
   --engine OPA_COMPAT \
   --output /tmp/e2e-policy-v2.yaml
 ```
@@ -275,9 +283,9 @@ curl -X POST -H "Authorization: Bearer dev-token" \
 
 ```bash
 export ASTRAGRAPH_POLICY_BUNDLE_SIGNING_KEY='dev-shared-secret'
-POLICY_YAML="$(cat policies/e2e-policy.yaml)"
+POLICY_YAML="$(cat policy-bundles/e2e-policy.yaml)"
 SIGNATURE="$(
-python3 -c "import base64, hashlib, hmac, json, os; y=open('policies/e2e-policy.yaml').read(); h={'alg':'HS256','typ':'JWT'}; c={'yaml':y}; e=lambda o: base64.urlsafe_b64encode(json.dumps(o,separators=(',',':')).encode()).rstrip(b'='); hp=e(h)+b'.'+e(c); s=base64.urlsafe_b64encode(hmac.new(os.environ['ASTRAGRAPH_POLICY_BUNDLE_SIGNING_KEY'].encode(), hp, hashlib.sha256).digest()).rstrip(b'='); print((hp+b'.'+s).decode())"
+python3 -c "import base64, hashlib, hmac, json, os; y=open('policy-bundles/e2e-policy.yaml').read(); h={'alg':'HS256','typ':'JWT'}; c={'yaml':y}; e=lambda o: base64.urlsafe_b64encode(json.dumps(o,separators=(',',':')).encode()).rstrip(b'='); hp=e(h)+b'.'+e(c); s=base64.urlsafe_b64encode(hmac.new(os.environ['ASTRAGRAPH_POLICY_BUNDLE_SIGNING_KEY'].encode(), hp, hashlib.sha256).digest()).rstrip(b'='); print((hp+b'.'+s).decode())"
 )"
 ```
 - Prometheus alert rule examples: `ops/prometheus/astragraph-policy-rollout-alerts.yaml`
@@ -294,16 +302,19 @@ python3 -c "import base64, hashlib, hmac, json, os; y=open('policies/e2e-policy.
 ## Repository Layout
 
 - `proxy/`: Rust sidecar proxy and enforcement layer (MCP + A2A interceptors)
-- `policy/`: Rust policy engine with YAML parsing and hot reload
+- `policy/`: Rust policy engine crate (`cargo` workspace member), serving `/policies/*` APIs
+- `policy-bundles/`: Sample/versioned policy YAML bundles used for quickstart and simulation
 - `graph/`: Rust graph and audit service (REST + gRPC)
-- `verifier/`: Python verifier and distillation/scoring paths
+- `verifier/`: Verifier reference implementation + scoring code (`verifier/INTERFACE.md` defines the production contract)
 - `dashboard/`: React + Vite operator UI
 - `connectors/`: LangGraph, CrewAI, AutoGen adapters + shared `ProxyClient` + `quickstart.py`
 - `ops/`: ops artifacts (example Prometheus rollout alert rules)
 - `scripts/`: E2E gate, fixtures, mocks, cert generation
 - `tests/`: integration, synthetic, and anonymized evaluation assets
+- `data/`: Local runtime state (policy history and graph/audit JSONL files for dev/e2e)
 - `charts/`: Helm chart manifests
 - `docs/schemas/`: SOC2 + ISO42001 audit export schemas
+- `docs/repo_structure.md`: contributor-oriented map of naming conventions and top-level directories
 
 ## Security and Operations Notes
 

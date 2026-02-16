@@ -38,7 +38,7 @@ Generate v2 advanced-rule suggestions from existing YAML:
 
 ```bash
 cargo run -p astragraph-policy --bin policy_migrate -- \
-  --input policies/e2e-policy.yaml \
+  --input policy-bundles/e2e-policy.yaml \
   --engine OPA_COMPAT \
   --output /tmp/e2e-policy-v2.yaml
 ```
