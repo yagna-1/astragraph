@@ -1,0 +1,111 @@
+<svg width="1600" height="520" viewBox="0 0 1600 520" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="80" y1="40" x2="1520" y2="480" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0B1220"/>
+      <stop offset="0.5" stop-color="#121A2C"/>
+      <stop offset="1" stop-color="#0F172A"/>
+    </linearGradient>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#67E8F9"/>
+      <stop offset="0.5" stop-color="#A78BFA"/>
+      <stop offset="1" stop-color="#34D399"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#172036"/>
+      <stop offset="1" stop-color="#0F172A"/>
+    </linearGradient>
+    <linearGradient id="strokeA" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#60A5FA"/>
+      <stop offset="1" stop-color="#22D3EE"/>
+    </linearGradient>
+    <linearGradient id="strokeB" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#C084FC"/>
+      <stop offset="1" stop-color="#34D399"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect x="24" y="24" width="1552" height="472" rx="34" fill="url(#bg)"/>
+  <rect x="24" y="24" width="1552" height="472" rx="34" stroke="#334155" stroke-width="2"/>
+
+  <g opacity="0.2">
+    <path d="M72 136H1528" stroke="#334155"/>
+    <path d="M72 216H1528" stroke="#334155"/>
+    <path d="M72 296H1528" stroke="#334155"/>
+    <path d="M72 376H1528" stroke="#334155"/>
+    <path d="M240 72V448" stroke="#334155"/>
+    <path d="M440 72V448" stroke="#334155"/>
+    <path d="M640 72V448" stroke="#334155"/>
+    <path d="M840 72V448" stroke="#334155"/>
+    <path d="M1040 72V448" stroke="#334155"/>
+    <path d="M1240 72V448" stroke="#334155"/>
+  </g>
+
+  <g transform="translate(142 112)">
+    <circle cx="122" cy="146" r="126" stroke="url(#strokeA)" stroke-width="3" opacity="0.85"/>
+    <circle cx="122" cy="146" r="95" stroke="url(#strokeB)" stroke-width="2" stroke-dasharray="5 11" opacity="0.9"/>
+
+    <path d="M122 41L195 83V167C195 226 156 274 122 291C88 274 49 226 49 167V83L122 41Z" fill="url(#panel)" stroke="url(#strokeB)" stroke-width="3"/>
+
+    <path d="M122 84L157 104V145C157 175 137 200 122 210C107 200 87 175 87 145V104L122 84Z" fill="#0B1220" stroke="#60A5FA" stroke-width="2.5"/>
+
+    <path d="M122 116V159" stroke="#67E8F9" stroke-width="4" stroke-linecap="round"/>
+    <rect x="107" y="139" width="30" height="24" rx="6" fill="#111827" stroke="#22D3EE" stroke-width="2"/>
+
+    <path d="M38 120L86 132" stroke="#60A5FA" stroke-width="2.5"/>
+    <path d="M206 121L158 133" stroke="#34D399" stroke-width="2.5"/>
+    <path d="M122 19L122 82" stroke="#A78BFA" stroke-width="2.5"/>
+    <path d="M46 218L94 178" stroke="#A78BFA" stroke-width="2.5"/>
+    <path d="M198 218L150 178" stroke="#60A5FA" stroke-width="2.5"/>
+
+    <circle cx="38" cy="120" r="9" fill="#0B1220" stroke="#60A5FA" stroke-width="3"/>
+    <circle cx="206" cy="121" r="9" fill="#0B1220" stroke="#34D399" stroke-width="3"/>
+    <circle cx="122" cy="19" r="9" fill="#0B1220" stroke="#A78BFA" stroke-width="3"/>
+    <circle cx="46" cy="218" r="9" fill="#0B1220" stroke="#A78BFA" stroke-width="3"/>
+    <circle cx="198" cy="218" r="9" fill="#0B1220" stroke="#60A5FA" stroke-width="3"/>
+
+    <circle cx="122" cy="146" r="5.5" fill="#34D399" filter="url(#glow)"/>
+  </g>
+
+  <g transform="translate(420 128)">
+    <text x="0" y="104" fill="url(#brand)" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="112" font-weight="800" letter-spacing="1">AstraGraph</text>
+    <text x="2" y="154" fill="#BFDBFE" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="34" font-weight="500">Policy-Enforced Observability for Multi-Agent Systems</text>
+
+    <g transform="translate(0 196)">
+      <rect x="0" y="0" width="232" height="54" rx="14" fill="#0B1220" stroke="#60A5FA" stroke-width="2"/>
+      <circle cx="26" cy="27" r="7" fill="#60A5FA" filter="url(#soft)"/>
+      <text x="44" y="35" fill="#DBEAFE" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="23" font-weight="600">Fail-Closed Proxy</text>
+    </g>
+
+    <g transform="translate(252 196)">
+      <rect x="0" y="0" width="197" height="54" rx="14" fill="#0B1220" stroke="#A78BFA" stroke-width="2"/>
+      <circle cx="26" cy="27" r="7" fill="#A78BFA" filter="url(#soft)"/>
+      <text x="44" y="35" fill="#EDE9FE" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="23" font-weight="600">Policy Engine</text>
+    </g>
+
+    <g transform="translate(469 196)">
+      <rect x="0" y="0" width="178" height="54" rx="14" fill="#0B1220" stroke="#34D399" stroke-width="2"/>
+      <circle cx="26" cy="27" r="7" fill="#34D399" filter="url(#soft)"/>
+      <text x="44" y="35" fill="#DCFCE7" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="23" font-weight="600">Causal Graph</text>
+    </g>
+
+    <g transform="translate(667 196)">
+      <rect x="0" y="0" width="167" height="54" rx="14" fill="#0B1220" stroke="#22D3EE" stroke-width="2"/>
+      <circle cx="26" cy="27" r="7" fill="#22D3EE" filter="url(#soft)"/>
+      <text x="44" y="35" fill="#CFFAFE" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="23" font-weight="600">Verifier Gate</text>
+    </g>
+  </g>
+</svg>

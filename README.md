@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/astragraph-logo.svg" alt="AstraGraph logo" width="980" />
+</p>
+
 # AstraGraph
 
 Policy-enforced observability for tool-using, multi-agent systems.
