@@ -10,12 +10,18 @@ pub struct ProxyConfig {
     pub http: HttpConfig,
     pub policy_cache_ttl_ms: u64,
     pub fail_closed: bool,
+    #[serde(default = "default_verifier_required_at_startup")]
+    pub verifier_required_at_startup: bool,
     pub agent_id: String,
     pub policy_id: String,
     #[serde(default)]
     pub allow_without_trace_tools: Vec<String>,
     #[allow(dead_code)]
     pub trace_mode: String,
+}
+
+fn default_verifier_required_at_startup() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -99,6 +105,9 @@ impl ProxyConfig {
         if let Ok(value) = env::var("ASTRAGRAPH_FAIL_CLOSED") {
             config.fail_closed = value == "true";
         }
+        if let Ok(value) = env::var("ASTRAGRAPH_VERIFIER_REQUIRED_AT_STARTUP") {
+            config.verifier_required_at_startup = value == "true";
+        }
         if let Ok(value) = env::var("ASTRAGRAPH_AGENT_ID") {
             config.agent_id = value;
         }
@@ -153,6 +162,9 @@ impl ProxyConfig {
                 .and_then(|value| value.parse().ok())
                 .unwrap_or(500),
             fail_closed: env::var("ASTRAGRAPH_FAIL_CLOSED")
+                .map(|value| value == "true")
+                .unwrap_or(true),
+            verifier_required_at_startup: env::var("ASTRAGRAPH_VERIFIER_REQUIRED_AT_STARTUP")
                 .map(|value| value == "true")
                 .unwrap_or(true),
             agent_id: env::var("ASTRAGRAPH_AGENT_ID").unwrap_or_else(|_| "agent-unknown".into()),

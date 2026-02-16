@@ -16,7 +16,7 @@ use serde_json::json;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
-use tokio::time::{sleep, Duration};
+use tokio::time::{sleep, timeout, Duration};
 use tokio_stream::StreamExt;
 use tracing::{info_span, Instrument};
 
@@ -384,9 +384,10 @@ async fn score_with_retry(
     request: VerifierRequest,
     fallback: FallbackMode,
 ) -> Option<astragraph_proto::astragraph::VerifierResponse> {
+    let rpc_timeout = Duration::from_secs(2);
     let mut client = clients.verifier.clone();
     let stream_request = tokio_stream::iter(vec![request.clone()]);
-    if let Ok(response) = client.stream_score(stream_request).await {
+    if let Ok(Ok(response)) = timeout(rpc_timeout, client.stream_score(stream_request)).await {
         let mut stream = response.into_inner();
         if let Some(Ok(message)) = stream.next().await {
             crate::telemetry::record_verification_latency(message.latency_ms as f64);
@@ -401,7 +402,10 @@ async fn score_with_retry(
     sleep(Duration::from_millis(500)).await;
     let mut retry_client = clients.verifier.clone();
     let retry_stream_request = tokio_stream::iter(vec![request]);
-    let response = retry_client.stream_score(retry_stream_request).await.ok()?;
+    let response = timeout(rpc_timeout, retry_client.stream_score(retry_stream_request))
+        .await
+        .ok()?
+        .ok()?;
     let mut stream = response.into_inner();
     stream.next().await.and_then(|message| {
         message.ok().inspect(|value| {

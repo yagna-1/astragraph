@@ -40,6 +40,9 @@ The proxy currently calls `StreamScore` with a single request item and expects a
 - If the verifier is unavailable, the proxy applies policy fallback:
   - `QUEUE` => queue-fallback policy violation envelope (`403` + queue detail)
   - `BLOCK`/`ALLOW` => current enforcement fallback behavior
+- Startup dependency can be controlled with `ASTRAGRAPH_VERIFIER_REQUIRED_AT_STARTUP`:
+  - `true` (default): proxy waits for verifier reachability at startup
+  - `false`: proxy starts in degraded mode and handles verifier outages via fallback path
 - Timeouts/unavailable must fail fast; avoid long hangs that stall proxy request path.
 
 ## Security + Transport

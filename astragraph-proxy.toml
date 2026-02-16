@@ -1,5 +1,6 @@
 policy_cache_ttl_ms = 500
 fail_closed = true
+verifier_required_at_startup = true
 agent_id = "agent-unknown"
 policy_id = ""
 allow_without_trace_tools = []

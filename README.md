@@ -115,7 +115,8 @@ The script:
 
 ### Verifier implementation status (important)
 
-- The proxy currently requires a reachable verifier gRPC service at startup.
+- The proxy requires a verifier gRPC dependency by default (`ASTRAGRAPH_VERIFIER_REQUIRED_AT_STARTUP=true`).
+- You can allow degraded startup with `ASTRAGRAPH_VERIFIER_REQUIRED_AT_STARTUP=false` (proxy starts and enforces fallback behavior when verifier is unavailable).
 - Default E2E mode uses `scripts/mock_verifier.py` for deterministic CI and local testing.
 - `--real-verifier` uses `verifier/server.py` (reference Python implementation).
 - Production deployments should replace the verifier backend with your own service that implements the same gRPC interface documented in `verifier/INTERFACE.md`.
@@ -319,6 +320,7 @@ python3 -c "import base64, hashlib, hmac, json, os; y=open('policy-bundles/e2e-p
 ## Security and Operations Notes
 
 - Default mode is intended to be fail-closed (`fail_closed = true` in `astragraph-proxy.toml`).
+- In production, keep `ASTRAGRAPH_VERIFIER_REQUIRED_AT_STARTUP=true` unless you intentionally run degraded startup with strict fallback (`QUEUE` or `BLOCK`).
 - Local certs in `certs/` are for development. Use managed PKI in production.
 - Do not expose demo tokens or local auth settings in internet-facing deployments.
 
