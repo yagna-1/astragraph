@@ -87,3 +87,45 @@ ul {
   display: grid;
   gap: 6px;
 }
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.stat-card {
+  background: #101621;
+  border: 1px solid #2a3142;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.stat-card strong {
+  font-size: 18px;
+}
+
+.analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.is-selected {
+  border-color: #2b6dff;
+  box-shadow: 0 0 0 1px rgba(43, 109, 255, 0.35);
+}
+
+@media (max-width: 1200px) {
+  .app {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .stats-grid,
+  .analytics-grid {
+    grid-template-columns: 1fr;
+  }
+}

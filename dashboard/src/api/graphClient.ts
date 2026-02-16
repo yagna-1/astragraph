@@ -29,13 +29,24 @@ export type GraphSummary = {
 
 export type ViolationSummary = {
   violation_id: string;
+  workflow_id: string;
+  node_id: string;
   rule_id: string;
   agent_id: string;
+  timestamp: number;
+  deviation_score: number;
+  threshold: number;
+  snapshot: unknown;
 };
 
-export type ViolationDetail = {
-  violation_id: string;
-  details: string;
+export type ViolationDetail = ViolationSummary;
+
+export type ViolationFilter = {
+  agent_id?: string;
+  workflow_id?: string;
+  rule_id?: string;
+  from_ts?: number;
+  to_ts?: number;
 };
 
 const DEFAULT_BASE_URL =
@@ -101,8 +112,23 @@ export async function fetchDriftPath(
   return response.json() as Promise<string[]>;
 }
 
-export async function fetchViolations(): Promise<ViolationSummary[]> {
-  const response = await fetch(`${DEFAULT_BASE_URL}/audit/violations`, {
+export async function fetchViolations(
+  filter?: ViolationFilter
+): Promise<ViolationSummary[]> {
+  const params = new URLSearchParams();
+  if (filter?.agent_id) params.set("agent_id", filter.agent_id);
+  if (filter?.workflow_id) params.set("workflow_id", filter.workflow_id);
+  if (filter?.rule_id) params.set("rule_id", filter.rule_id);
+  if (typeof filter?.from_ts === "number")
+    params.set("from_ts", String(filter.from_ts));
+  if (typeof filter?.to_ts === "number")
+    params.set("to_ts", String(filter.to_ts));
+  const query = params.toString();
+  const url = query
+    ? `${DEFAULT_BASE_URL}/audit/violations?${query}`
+    : `${DEFAULT_BASE_URL}/audit/violations`;
+
+  const response = await fetch(url, {
     headers: authHeaders(),
   });
   if (!response.ok) {

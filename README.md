@@ -177,6 +177,10 @@ By default:
 
 - URL: `http://localhost:5173`
 - Graph API base: `http://localhost:8080` (override with `VITE_GRAPH_API`)
+- Built-in incident triage workflows:
+  - incident timeline (timestamped violation stream)
+  - drift-path surfacing (node + drift chain drill-down)
+  - policy hit analytics (top rules/agents/workflows)
 
 ## Core APIs
 

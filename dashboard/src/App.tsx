@@ -17,6 +17,25 @@ import {
 } from "./api/graphClient";
 
 const DEFAULT_TOKEN = "";
+const TIMELINE_LIMIT = 100;
+
+function formatTimestamp(unixSeconds: number): string {
+  if (!unixSeconds) {
+    return "unknown";
+  }
+  return new Date(unixSeconds * 1000).toLocaleString();
+}
+
+function buildHitCounts(items: string[]): Array<{ key: string; count: number }> {
+  const counts = new Map<string, number>();
+  for (const item of items) {
+    const key = item.trim() || "unknown";
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([key, count]) => ({ key, count }))
+    .sort((left, right) => right.count - left.count);
+}
 
 export function App() {
   const [token, setToken] = useState(
@@ -37,12 +56,21 @@ export function App() {
   const [nodeType, setNodeType] = useState<string>("");
   const [agentId, setAgentId] = useState<string>("");
   const [status, setStatus] = useState<string>("");
+  const [violationRuleFilter, setViolationRuleFilter] = useState<string>("");
+  const [violationAgentFilter, setViolationAgentFilter] = useState<string>("");
+  const [violationWorkflowFilter, setViolationWorkflowFilter] =
+    useState<string>("");
+  const [timelineWindowHours, setTimelineWindowHours] = useState<string>("24");
+  const [pendingSelectedNodeId, setPendingSelectedNodeId] = useState<
+    string | undefined
+  >(undefined);
 
   useEffect(() => {
     localStorage.setItem("astragraph_token", token);
   }, [token]);
 
   useEffect(() => {
+    setError(null);
     fetchGraphs()
       .then((items) => {
         setGraphs(items);
@@ -51,10 +79,49 @@ export function App() {
         }
       })
       .catch((err: Error) => setError(err.message));
-    fetchViolations()
-      .then(setViolations)
-      .catch((err: Error) => setError(err.message));
-  }, []);
+  }, [token]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadViolations = async () => {
+      try {
+        const hours = Number.parseInt(timelineWindowHours, 10);
+        const fromTs =
+          Number.isFinite(hours) && hours > 0
+            ? Math.floor(Date.now() / 1000) - hours * 60 * 60
+            : undefined;
+        const records = await fetchViolations({
+          rule_id: violationRuleFilter || undefined,
+          agent_id: violationAgentFilter || undefined,
+          workflow_id: violationWorkflowFilter || undefined,
+          from_ts: fromTs,
+        });
+        records.sort((left, right) => right.timestamp - left.timestamp);
+        if (!cancelled) {
+          setViolations(records);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError((err as Error).message);
+        }
+      }
+    };
+
+    loadViolations();
+    const timer = polling ? setInterval(loadViolations, 5000) : undefined;
+    return () => {
+      cancelled = true;
+      if (timer) clearInterval(timer);
+    };
+  }, [
+    token,
+    polling,
+    timelineWindowHours,
+    violationRuleFilter,
+    violationAgentFilter,
+    violationWorkflowFilter,
+  ]);
 
   useEffect(() => {
     if (!selectedGraphId) {
@@ -105,15 +172,56 @@ export function App() {
       .catch(() => setDriftPath(undefined));
   }, [selectedGraphId, selectedNode]);
 
-  const violationOptions = useMemo(() => violations.slice(0, 50), [violations]);
+  useEffect(() => {
+    if (!graph || !pendingSelectedNodeId) {
+      return;
+    }
+    const foundNode = graph.nodes.find((node) => node.id === pendingSelectedNodeId);
+    if (foundNode) {
+      setSelectedNode(foundNode);
+      setPendingSelectedNodeId(undefined);
+    }
+  }, [graph, pendingSelectedNodeId]);
+
+  const violationOptions = useMemo(
+    () => violations.slice(0, TIMELINE_LIMIT),
+    [violations]
+  );
+  const ruleHits = useMemo(
+    () => buildHitCounts(violations.map((violation) => violation.rule_id)),
+    [violations]
+  );
+  const agentHits = useMemo(
+    () => buildHitCounts(violations.map((violation) => violation.agent_id)),
+    [violations]
+  );
+  const workflowHits = useMemo(
+    () => buildHitCounts(violations.map((violation) => violation.workflow_id)),
+    [violations]
+  );
+  const topRule = ruleHits[0]?.key ?? "none";
+  const topAgent = agentHits[0]?.key ?? "none";
+  const latestViolation = violationOptions[0];
 
   const handleSelectViolation = async (violation: ViolationSummary) => {
     try {
       const detail = await fetchViolationDetail(violation.violation_id);
       setSelectedViolation(detail);
+      setSelectedGraphId(detail.workflow_id);
+      setNodeType("");
+      setAgentId("");
+      setStatus("");
+      setPendingSelectedNodeId(detail.node_id);
     } catch (err) {
       setError((err as Error).message);
     }
+  };
+
+  const clearViolationFilters = () => {
+    setViolationRuleFilter("");
+    setViolationAgentFilter("");
+    setViolationWorkflowFilter("");
+    setTimelineWindowHours("24");
   };
 
   return (
@@ -188,23 +296,133 @@ export function App() {
         )}
       </div>
       <div className="panel">
-        <h2>Node Details</h2>
+        <h2>Incident Triage</h2>
+        <div className="stats-grid">
+          <div className="stat-card">
+            <div className="meta">Total violations</div>
+            <strong>{violations.length}</strong>
+          </div>
+          <div className="stat-card">
+            <div className="meta">Top rule</div>
+            <strong>{topRule}</strong>
+          </div>
+          <div className="stat-card">
+            <div className="meta">Top agent</div>
+            <strong>{topAgent}</strong>
+          </div>
+        </div>
+        <div className="controls">
+          <label>
+            Rule filter
+            <input
+              value={violationRuleFilter}
+              onChange={(event) => setViolationRuleFilter(event.target.value)}
+              placeholder="rule-export-block"
+            />
+          </label>
+          <label>
+            Agent filter
+            <input
+              value={violationAgentFilter}
+              onChange={(event) => setViolationAgentFilter(event.target.value)}
+              placeholder="lead-scorer"
+            />
+          </label>
+          <label>
+            Workflow filter
+            <input
+              value={violationWorkflowFilter}
+              onChange={(event) => setViolationWorkflowFilter(event.target.value)}
+              placeholder="wf-three-agent-e2e"
+            />
+          </label>
+          <label>
+            Timeline window (hours)
+            <input
+              value={timelineWindowHours}
+              onChange={(event) => setTimelineWindowHours(event.target.value)}
+              placeholder="24"
+            />
+          </label>
+        </div>
+        <div className="controls">
+          <button type="button" onClick={clearViolationFilters}>
+            Clear triage filters
+          </button>
+          <button
+            type="button"
+            onClick={() => latestViolation && handleSelectViolation(latestViolation)}
+            disabled={!latestViolation}
+          >
+            Open latest incident
+          </button>
+        </div>
+        <h3>Node + Violation Details</h3>
         <ViolationDetail
           node={selectedNode}
           driftPath={driftPath}
           violation={selectedViolation}
         />
-        <h3>Violations</h3>
+        <h3>Policy Hit Analytics</h3>
+        <div className="analytics-grid">
+          <div>
+            <div className="meta">Top rules</div>
+            <ul>
+              {ruleHits.slice(0, 6).map((hit) => (
+                <li key={`rule-${hit.key}`}>
+                  <button type="button" onClick={() => setViolationRuleFilter(hit.key)}>
+                    {hit.key} — {hit.count}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <div className="meta">Top agents</div>
+            <ul>
+              {agentHits.slice(0, 6).map((hit) => (
+                <li key={`agent-${hit.key}`}>
+                  <button type="button" onClick={() => setViolationAgentFilter(hit.key)}>
+                    {hit.key} — {hit.count}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <div className="meta">Top workflows</div>
+            <ul>
+              {workflowHits.slice(0, 6).map((hit) => (
+                <li key={`workflow-${hit.key}`}>
+                  <button type="button" onClick={() => setViolationWorkflowFilter(hit.key)}>
+                    {hit.key} — {hit.count}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+        <h3>Incident Timeline</h3>
         <div className="meta">
           {violationOptions.length === 0
             ? "No violations reported."
-            : "Select a violation to inspect details."}
+            : "Select an incident to inspect node details and drift path."}
         </div>
         <ul>
           {violationOptions.map((violation) => (
             <li key={violation.violation_id}>
-              <button onClick={() => handleSelectViolation(violation)}>
-                {violation.violation_id} — {violation.rule_id}
+              <button
+                type="button"
+                className={
+                  selectedViolation?.violation_id === violation.violation_id
+                    ? "is-selected"
+                    : ""
+                }
+                onClick={() => handleSelectViolation(violation)}
+              >
+                {formatTimestamp(violation.timestamp)} — {violation.rule_id} —{" "}
+                {violation.agent_id} — score {violation.deviation_score.toFixed(2)}/
+                {violation.threshold.toFixed(2)}
               </button>
             </li>
           ))}
