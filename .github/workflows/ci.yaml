@@ -48,6 +48,8 @@ jobs:
         run: python3 benchmarks/proxy_latency.py --iterations 100 --concurrency 16 --p99-target-ms 2000 --require-success
       - name: AgentBench FAR evaluation
         run: python3 eval/agentbench_eval.py --dataset eval/agentbench.jsonl --proxy-url http://127.0.0.1:7070/mcp/tools/call --max-far 0.05 --require-inputs --strict-http
+      - name: Synthetic attack evaluation gate
+        run: python3 eval/synthetic_attack_eval.py --dataset tests/synthetic/attack_traces.jsonl --proxy-url http://127.0.0.1:7070/mcp/tools/call --max-fnr 0.05 --max-far 0.10 --min-malicious-recall 0.95 --min-attack-recall 0.90 --require-inputs --strict-http
       - name: Stop mock proxy fixture
         if: ${{ always() }}
         run: |

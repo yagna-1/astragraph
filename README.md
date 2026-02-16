@@ -204,6 +204,8 @@ Policy service (`:8081`, requires bearer token):
 - `POST /policies/:name/rollout/promote` (promote candidate to stable)
 - `POST /policies/:name/rollback` (rollback active rollout)
 
+Compatibility reference: `docs/api_policy_compatibility_matrix.md`
+
 Proxy HTTP entrypoint (`:7070`):
 
 - `POST /mcp/tools/call`
@@ -253,6 +255,12 @@ python3 -c "import base64, hashlib, hmac, json, os; y=open('policies/e2e-policy.
 )"
 ```
 - Prometheus alert rule examples: `ops/prometheus/astragraph-policy-rollout-alerts.yaml`
+
+## Evaluation Gates
+
+- `eval/agentbench_eval.py`: FAR/VDR gate on `eval/agentbench.jsonl`
+- `eval/synthetic_attack_eval.py`: synthetic malicious/benign gate on `tests/synthetic/attack_traces.jsonl`
+- CI enforces both gates against the proxy fixture before merge.
 
 ## Repository Layout
 
