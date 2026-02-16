@@ -14,7 +14,7 @@ jobs:
           python-version: "3.11"
       - uses: dtolnay/rust-toolchain@stable
       - name: Install Python dependencies
-        run: pip install pytest grpcio-tools
+        run: pip install pytest grpcio-tools requests
       - name: Generate protobuf code
         run: make proto-gen
       - name: Rust clippy
