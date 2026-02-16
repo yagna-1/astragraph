@@ -261,7 +261,7 @@ python3 -c "import base64, hashlib, hmac, json, os; y=open('policies/e2e-policy.
 - `graph/`: Rust graph and audit service (REST + gRPC)
 - `verifier/`: Python verifier and distillation/scoring paths
 - `dashboard/`: React + Vite operator UI
-- `connectors/`: LangGraph, CrewAI, AutoGen adapter skeletons
+- `connectors/`: LangGraph, CrewAI, AutoGen adapters + shared `ProxyClient` + `quickstart.py`
 - `ops/`: ops artifacts (example Prometheus rollout alert rules)
 - `scripts/`: E2E gate, fixtures, mocks, cert generation
 - `tests/`: integration and synthetic test assets
