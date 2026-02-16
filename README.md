@@ -150,6 +150,18 @@ The gate validates all core controls in one run:
 docker compose up --build
 ```
 
+### Deployment profiles (explicit defaults)
+
+Use profile env files to make runtime intent explicit:
+
+```bash
+docker compose --env-file ops/profiles/dev.env up --build
+docker compose --env-file ops/profiles/non-dev.env up --build
+```
+
+- `ops/profiles/dev.env`: local development defaults (`ASTRAGRAPH_E2E_VERIFIER_MODE=mock`, non-blocking verifier startup).
+- `ops/profiles/non-dev.env`: staging/production-like defaults (`ASTRAGRAPH_E2E_VERIFIER_MODE=real`, verifier required at startup, fail-closed).
+
 ### Useful make targets
 
 ```bash
@@ -240,6 +252,9 @@ Advanced policy mode reference: `docs/advanced_policy_mode.md`
 Model upgrade protocol: `docs/model_upgrade_protocol.md`
 Enterprise reference architecture: `docs/enterprise_reference_architecture.md`
 Kubernetes multi-tenant deployment: `docs/kubernetes_multi_tenant_reference.md`
+Adoption playbooks: `docs/adoption_playbooks.md`
+Public roadmap: `docs/public_roadmap.md`
+Community contribution track: `docs/community_contribution_track.md`
 
 Proxy HTTP entrypoint (`:7070`):
 
@@ -309,7 +324,7 @@ python3 -c "import base64, hashlib, hmac, json, os; y=open('policy-bundles/e2e-p
 - `verifier/`: Verifier reference implementation + scoring code (`verifier/INTERFACE.md` defines the production contract)
 - `dashboard/`: React + Vite operator UI
 - `connectors/`: LangGraph, CrewAI, AutoGen adapters + shared `ProxyClient` + `quickstart.py`
-- `ops/`: ops artifacts (example Prometheus rollout alert rules)
+- `ops/`: ops artifacts (Prometheus alert rules + runtime profiles)
 - `scripts/`: E2E gate, fixtures, mocks, cert generation
 - `tests/`: integration, synthetic, and anonymized evaluation assets
 - `data/`: Local runtime state (policy history and graph/audit JSONL files for dev/e2e)

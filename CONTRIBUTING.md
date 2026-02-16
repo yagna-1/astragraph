@@ -28,4 +28,6 @@ cd ASTRAGRAPH
 - Keep changes focused.
 - Add/adjust tests when behavior changes.
 - Prefer deterministic fixtures for E2E.
-
+- Follow contribution tracks:
+  - `docs/community_contribution_track.md`
+  - `docs/public_roadmap.md`
