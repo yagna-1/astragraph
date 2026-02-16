@@ -10,16 +10,27 @@ mod telemetry;
 mod thinking_trace;
 mod tls;
 
+use std::sync::Arc;
+use tokio::time::{sleep, Duration};
+
 #[tokio::main]
 async fn main() {
     let config = config::ProxyConfig::load();
     telemetry::init();
 
-    let clients = match grpc::GrpcClients::connect(&config).await {
-        Ok(clients) => std::sync::Arc::new(clients),
-        Err(err) => {
-            eprintln!("Failed to connect gRPC clients: {err}");
-            return;
+    let clients = {
+        let mut attempt: u64 = 1;
+        loop {
+            match grpc::GrpcClients::connect(&config).await {
+                Ok(clients) => break Arc::new(clients),
+                Err(err) => {
+                    eprintln!(
+                        "Failed to connect gRPC clients on attempt {attempt}; retrying: {err}"
+                    );
+                    attempt += 1;
+                    sleep(Duration::from_secs(1)).await;
+                }
+            }
         }
     };
 
