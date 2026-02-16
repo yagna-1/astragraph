@@ -1,0 +1,67 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="bg" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(512 512) rotate(90) scale(420)">
+      <stop offset="0" stop-color="#172554"/>
+      <stop offset="0.6" stop-color="#0F172A"/>
+      <stop offset="1" stop-color="#090E1A"/>
+    </radialGradient>
+    <linearGradient id="ringA" x1="220" y1="220" x2="804" y2="804" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#67E8F9"/>
+      <stop offset="0.45" stop-color="#A78BFA"/>
+      <stop offset="1" stop-color="#34D399"/>
+    </linearGradient>
+    <linearGradient id="ringB" x1="804" y1="220" x2="220" y2="804" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#60A5FA"/>
+      <stop offset="1" stop-color="#22D3EE"/>
+    </linearGradient>
+    <linearGradient id="shield" x1="512" y1="280" x2="512" y2="700" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1E293B"/>
+      <stop offset="1" stop-color="#0F172A"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="7" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <circle cx="512" cy="512" r="470" fill="url(#bg)"/>
+  <circle cx="512" cy="512" r="470" stroke="#334155" stroke-width="4"/>
+
+  <circle cx="512" cy="512" r="390" stroke="url(#ringA)" stroke-width="12"/>
+  <circle cx="512" cy="512" r="350" stroke="url(#ringB)" stroke-width="6" stroke-dasharray="12 16"/>
+
+  <g opacity="0.35">
+    <circle cx="512" cy="512" r="285" stroke="#1E293B" stroke-width="2"/>
+    <path d="M512 227V797" stroke="#1E293B" stroke-width="2"/>
+    <path d="M227 512H797" stroke="#1E293B" stroke-width="2"/>
+    <path d="M310 310L714 714" stroke="#1E293B" stroke-width="2"/>
+    <path d="M714 310L310 714" stroke="#1E293B" stroke-width="2"/>
+  </g>
+
+  <g>
+    <path d="M512 286L678 380V556C678 685 590 788 512 824C434 788 346 685 346 556V380L512 286Z" fill="url(#shield)" stroke="url(#ringA)" stroke-width="8"/>
+    <path d="M512 382L588 426V517C588 584 543 639 512 658C481 639 436 584 436 517V426L512 382Z" fill="#0B1220" stroke="#60A5FA" stroke-width="5"/>
+    <rect x="472" y="493" width="80" height="66" rx="14" fill="#111827" stroke="#22D3EE" stroke-width="5"/>
+    <path d="M512 450V520" stroke="#67E8F9" stroke-width="9" stroke-linecap="round"/>
+  </g>
+
+  <g stroke-width="6" stroke-linecap="round" filter="url(#glow)">
+    <path d="M512 286V212" stroke="#A78BFA"/>
+    <path d="M346 432L276 402" stroke="#60A5FA"/>
+    <path d="M678 432L748 402" stroke="#34D399"/>
+    <path d="M398 724L338 778" stroke="#A78BFA"/>
+    <path d="M626 724L686 778" stroke="#60A5FA"/>
+  </g>
+
+  <g>
+    <circle cx="512" cy="212" r="17" fill="#0B1220" stroke="#A78BFA" stroke-width="6"/>
+    <circle cx="276" cy="402" r="17" fill="#0B1220" stroke="#60A5FA" stroke-width="6"/>
+    <circle cx="748" cy="402" r="17" fill="#0B1220" stroke="#34D399" stroke-width="6"/>
+    <circle cx="338" cy="778" r="17" fill="#0B1220" stroke="#A78BFA" stroke-width="6"/>
+    <circle cx="686" cy="778" r="17" fill="#0B1220" stroke="#60A5FA" stroke-width="6"/>
+    <circle cx="512" cy="512" r="11" fill="#34D399" filter="url(#glow)"/>
+  </g>
+</svg>

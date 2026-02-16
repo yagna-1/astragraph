@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/astragraph-logo.svg" alt="AstraGraph logo" width="980" />
+  <img src="docs/assets/astragraph-logo-round.svg" alt="AstraGraph round logo" width="280" />
 </p>
 
 # AstraGraph
