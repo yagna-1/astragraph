@@ -19,6 +19,7 @@ use axum::{
     Json, Router,
 };
 use serde::Deserialize;
+use serde_json::json;
 use std::env;
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -80,6 +81,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .route("/graphs", get(list_graphs))
         .route("/audit/violations", get(list_violations))
         .route("/audit/violations/:id", get(get_violation))
+        .route("/audit/slo", get(get_slo_summary))
         .route("/audit/export", get(export_audit))
         .with_state(state)
         .layer(middleware::from_fn(require_bearer));
@@ -260,6 +262,20 @@ async fn get_violation(
     Ok(Json(record))
 }
 
+async fn get_slo_summary(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<SloQuery>,
+) -> Result<Json<store::SloSummary>, StatusCode> {
+    ensure_roles(&state, &headers, &["audit", "admin"]).await?;
+    let store = state
+        .store
+        .read()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let review_margin = query.review_margin.unwrap_or(0.05);
+    Ok(Json(store.slo_summary(review_margin)))
+}
+
 async fn export_audit(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -270,6 +286,57 @@ async fn export_audit(
         .store
         .read()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if let Some(schema) = query.schema.as_deref() {
+        if schema.eq_ignore_ascii_case("soc2")
+            || schema.eq_ignore_ascii_case("soc2_v1")
+            || schema.eq_ignore_ascii_case("soc2.audit.v1")
+        {
+            let payload = json!({
+                "schema_version": "soc2.audit.v1",
+                "generated_at": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|value| value.as_secs()).unwrap_or(0),
+                "organization": query.org.clone().unwrap_or_else(|| "default-org".to_string()),
+                "project": query.project.clone().unwrap_or_else(|| "default-project".to_string()),
+                "policy_domain": query.policy_domain.clone().unwrap_or_else(|| "default".to_string()),
+                "controls": [
+                    {"control_id": "CC7.2", "objective": "Detect and respond to anomalies in system operations"},
+                    {"control_id": "CC6.6", "objective": "Restrict privileged operations through preventive controls"}
+                ],
+                "records": store.violations(),
+            });
+            return Ok((
+                [(
+                    axum::http::header::CONTENT_TYPE,
+                    "application/json; charset=utf-8",
+                )],
+                payload.to_string(),
+            ));
+        }
+        if schema.eq_ignore_ascii_case("iso42001")
+            || schema.eq_ignore_ascii_case("iso42001_v1")
+            || schema.eq_ignore_ascii_case("iso42001.audit.v1")
+        {
+            let payload = json!({
+                "schema_version": "iso42001.audit.v1",
+                "generated_at": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|value| value.as_secs()).unwrap_or(0),
+                "organization": query.org.clone().unwrap_or_else(|| "default-org".to_string()),
+                "project": query.project.clone().unwrap_or_else(|| "default-project".to_string()),
+                "policy_domain": query.policy_domain.clone().unwrap_or_else(|| "default".to_string()),
+                "ai_management_controls": [
+                    {"control_id": "A.8", "objective": "Monitor AI system behavior and incidents"},
+                    {"control_id": "A.10", "objective": "Maintain traceability for AI decision outcomes"}
+                ],
+                "events": store.violations(),
+            });
+            return Ok((
+                [(
+                    axum::http::header::CONTENT_TYPE,
+                    "application/json; charset=utf-8",
+                )],
+                payload.to_string(),
+            ));
+        }
+    }
+
     if query
         .format
         .as_deref()
@@ -321,4 +388,13 @@ struct AuditViolationQuery {
 #[derive(Debug, Deserialize)]
 struct ExportQuery {
     format: Option<String>,
+    schema: Option<String>,
+    org: Option<String>,
+    project: Option<String>,
+    policy_domain: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SloQuery {
+    review_margin: Option<f32>,
 }

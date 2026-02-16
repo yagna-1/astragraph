@@ -171,6 +171,25 @@ cargo run -p astragraph-policy --bin policy_simulator -- \
   --pack tests/policy_regressions/finance_guardrails.yaml --strict
 ```
 
+Enable advanced policy mode in simulation:
+
+```bash
+cargo run -p astragraph-policy --bin policy_simulator -- \
+  --policy policies/e2e-policy.yaml \
+  --agent lead-scorer \
+  --tool export_data \
+  --advanced-mode
+```
+
+Migrate YAML rules to advanced mode suggestions:
+
+```bash
+cargo run -p astragraph-policy --bin policy_migrate -- \
+  --input policies/e2e-policy.yaml \
+  --engine OPA_COMPAT \
+  --output /tmp/e2e-policy-v2.yaml
+```
+
 ### Dashboard
 
 By default:
@@ -181,6 +200,7 @@ By default:
   - incident timeline (timestamped violation stream)
   - drift-path surfacing (node + drift chain drill-down)
   - policy hit analytics (top rules/agents/workflows)
+  - SLO slices (p50/p95/p99 latency, block rate, false-positive review queue)
 
 ## Core APIs
 
@@ -192,6 +212,8 @@ Graph service (`:8080`, requires `Authorization: Bearer <token>`):
 - `GET /graphs/:id/drift-path/:node_id`
 - `GET /audit/violations`
 - `GET /audit/violations/:id`
+- `GET /audit/slo` (latency/block-rate/review-queue SLO slices)
+- `GET /audit/export` (`format=csv|json`, optional `schema=soc2_v1|iso42001_v1`)
 
 Policy service (`:8081`, requires bearer token):
 
@@ -205,6 +227,10 @@ Policy service (`:8081`, requires bearer token):
 - `POST /policies/:name/rollback` (rollback active rollout)
 
 Compatibility reference: `docs/api_policy_compatibility_matrix.md`
+Advanced policy mode reference: `docs/advanced_policy_mode.md`
+Model upgrade protocol: `docs/model_upgrade_protocol.md`
+Enterprise reference architecture: `docs/enterprise_reference_architecture.md`
+Kubernetes multi-tenant deployment: `docs/kubernetes_multi_tenant_reference.md`
 
 Proxy HTTP entrypoint (`:7070`):
 
@@ -260,7 +286,10 @@ python3 -c "import base64, hashlib, hmac, json, os; y=open('policies/e2e-policy.
 
 - `eval/agentbench_eval.py`: FAR/VDR gate on `eval/agentbench.jsonl`
 - `eval/synthetic_attack_eval.py`: synthetic malicious/benign gate on `tests/synthetic/attack_traces.jsonl`
-- CI enforces both gates against the proxy fixture before merge.
+- `eval/anonymized_trace_eval.py`: anonymized trace gate on `tests/anonymized/anonymized_traces.jsonl`
+- `eval/model_upgrade_gate.py`: candidate-vs-baseline verifier upgrade gate
+- `eval/review_feedback_loop.py`: reviewer feedback aggregation into tuning actions
+- CI enforces all gates against the proxy fixture before merge.
 
 ## Repository Layout
 
@@ -272,8 +301,9 @@ python3 -c "import base64, hashlib, hmac, json, os; y=open('policies/e2e-policy.
 - `connectors/`: LangGraph, CrewAI, AutoGen adapters + shared `ProxyClient` + `quickstart.py`
 - `ops/`: ops artifacts (example Prometheus rollout alert rules)
 - `scripts/`: E2E gate, fixtures, mocks, cert generation
-- `tests/`: integration and synthetic test assets
+- `tests/`: integration, synthetic, and anonymized evaluation assets
 - `charts/`: Helm chart manifests
+- `docs/schemas/`: SOC2 + ISO42001 audit export schemas
 
 ## Security and Operations Notes
 

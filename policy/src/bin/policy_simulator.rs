@@ -10,7 +10,7 @@ mod evaluator;
 #[path = "../parser.rs"]
 mod parser;
 
-use evaluator::PolicyContext;
+use evaluator::{PolicyContext, RuntimeEvaluationConfig};
 
 #[derive(Debug, Deserialize)]
 struct RegressionPack {
@@ -48,7 +48,8 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     if let Some(pack_path) = get_value(&args, "--pack") {
         let strict = has_flag(&args, "--strict");
-        return run_pack(&pack_path, strict);
+        let runtime = runtime_config(&args);
+        return run_pack(&pack_path, strict, runtime);
     }
 
     let policy_path = require_value(&args, "--policy")?;
@@ -56,14 +57,22 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let tool = require_value(&args, "--tool")?;
     let args_json = get_value(&args, "--args").unwrap_or_else(|| "{}".to_string());
     let now_utc = get_value(&args, "--now-utc");
-    run_single(&policy_path, &agent, &tool, &args_json, now_utc.as_deref())
+    let runtime = runtime_config(&args);
+    run_single(
+        &policy_path,
+        &agent,
+        &tool,
+        &args_json,
+        now_utc.as_deref(),
+        runtime,
+    )
 }
 
 fn print_help() {
     eprintln!(
         "Usage:\n  \
-cargo run -p astragraph-policy --bin policy_simulator -- \\\n  --policy <path> --agent <agent> --tool <tool> [--args <json>] [--now-utc <HH:MM UTC>]\n\n  \
-cargo run -p astragraph-policy --bin policy_simulator -- \\\n  --pack <tests/policy_regressions/*.yaml> [--strict]\n"
+cargo run -p astragraph-policy --bin policy_simulator -- \\\n  --policy <path> --agent <agent> --tool <tool> [--args <json>] [--now-utc <HH:MM UTC>] [--advanced-mode]\n\n  \
+cargo run -p astragraph-policy --bin policy_simulator -- \\\n  --pack <tests/policy_regressions/*.yaml> [--strict] [--advanced-mode]\n"
     );
 }
 
@@ -73,6 +82,7 @@ fn run_single(
     tool: &str,
     args_json: &str,
     now_utc: Option<&str>,
+    runtime: RuntimeEvaluationConfig,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let raw_policy = fs::read_to_string(policy_path)?;
     let policy = parser::parse_policy(&raw_policy).map_err(|err| format!("{:?}", err))?;
@@ -84,7 +94,8 @@ fn run_single(
         args: parsed_args,
         now_utc,
     };
-    let result = evaluator::evaluate_policy(&policy, &context).map_err(|_| "evaluation failed")?;
+    let result = evaluator::evaluate_policy_with_runtime(&policy, &context, &runtime)
+        .map_err(|_| "evaluation failed")?;
 
     println!(
         "{}",
@@ -93,13 +104,19 @@ fn run_single(
             "rule_id": result.matched_rule_id,
             "threshold": result.threshold,
             "fallback": format!("{:?}", result.fallback).to_uppercase(),
-            "require_confirmation": result.require_confirmation
+            "require_confirmation": result.require_confirmation,
+            "runtime_version": policy.spec.runtime.version,
+            "advanced_mode_enabled": runtime.advanced_mode_enabled,
         }))?
     );
     Ok(())
 }
 
-fn run_pack(pack_path: &str, strict: bool) -> Result<(), Box<dyn Error + Send + Sync>> {
+fn run_pack(
+    pack_path: &str,
+    strict: bool,
+    runtime: RuntimeEvaluationConfig,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
     let raw = fs::read_to_string(pack_path)?;
     let pack: RegressionPack = serde_yaml::from_str(&raw)?;
     let policy = parser::parse_policy(&pack.policy).map_err(|err| format!("{:?}", err))?;
@@ -114,7 +131,8 @@ fn run_pack(pack_path: &str, strict: bool) -> Result<(), Box<dyn Error + Send + 
             args: case.args.clone(),
             now_utc: case.now_utc.as_deref(),
         };
-        let eval = evaluator::evaluate_policy(&policy, &context).map_err(|_| "evaluation failed")?;
+        let eval = evaluator::evaluate_policy_with_runtime(&policy, &context, &runtime)
+            .map_err(|_| "evaluation failed")?;
         let actual_decision = format!("{:?}", eval.decision).to_uppercase();
         let actual_rule = eval.matched_rule_id.clone();
 
@@ -149,7 +167,8 @@ fn run_pack(pack_path: &str, strict: bool) -> Result<(), Box<dyn Error + Send + 
             "pack": pack.name,
             "cases": results,
             "strict": strict,
-            "failures": failures
+            "failures": failures,
+            "advanced_mode_enabled": runtime.advanced_mode_enabled,
         }))?
     );
 
@@ -158,6 +177,15 @@ fn run_pack(pack_path: &str, strict: bool) -> Result<(), Box<dyn Error + Send + 
     }
 
     Ok(())
+}
+
+fn runtime_config(args: &[String]) -> RuntimeEvaluationConfig {
+    if has_flag(args, "--advanced-mode") {
+        return RuntimeEvaluationConfig {
+            advanced_mode_enabled: true,
+        };
+    }
+    RuntimeEvaluationConfig::from_env()
 }
 
 fn parse_args_json(

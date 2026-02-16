@@ -1,4 +1,4 @@
-use crate::evaluator::{evaluate_policy, PolicyContext};
+use crate::evaluator::{evaluate_policy_with_runtime, PolicyContext, RuntimeEvaluationConfig};
 use crate::parser::{FallbackMode as PolicyFallbackMode, RuleAction};
 use crate::store::PolicyStore;
 use astragraph_proto::astragraph::policy_service_server::PolicyService;
@@ -12,11 +12,15 @@ use tracing::info_span;
 #[derive(Clone)]
 pub struct PolicyServiceImpl {
     store: Arc<RwLock<PolicyStore>>,
+    runtime: RuntimeEvaluationConfig,
 }
 
 impl PolicyServiceImpl {
     pub fn new(store: Arc<RwLock<PolicyStore>>) -> Self {
-        Self { store }
+        Self {
+            store,
+            runtime: RuntimeEvaluationConfig::from_env(),
+        }
     }
 }
 
@@ -59,7 +63,8 @@ impl PolicyService for PolicyServiceImpl {
             now_utc: now_utc.as_deref(),
         };
 
-        let result = evaluate_policy(policy, &context).map_err(|_| Status::internal("eval"))?;
+        let result = evaluate_policy_with_runtime(policy, &context, &self.runtime)
+            .map_err(|_| Status::internal("eval"))?;
         let response = PolicyEvaluationResponse {
             allowed: matches!(result.decision, RuleAction::Allow),
             rule_id: result.matched_rule_id.unwrap_or_default(),

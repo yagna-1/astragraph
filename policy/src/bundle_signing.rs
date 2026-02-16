@@ -1,4 +1,6 @@
-use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
+use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
+#[cfg(test)]
+use jsonwebtoken::{encode, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
 use std::env;
 
@@ -56,6 +58,7 @@ fn verify_yaml_signature_with_key(
     Ok(())
 }
 
+#[cfg(test)]
 pub fn sign_yaml_for_testing(yaml: &str, signing_key: &str) -> String {
     let claims = PolicyBundleClaims {
         yaml: yaml.to_string(),

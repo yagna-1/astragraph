@@ -95,6 +95,10 @@ ul {
   margin-bottom: 12px;
 }
 
+.slo-grid {
+  margin-top: 4px;
+}
+
 .stat-card {
   background: #101621;
   border: 1px solid #2a3142;

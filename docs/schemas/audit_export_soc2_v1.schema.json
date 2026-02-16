@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astragraph.dev/schemas/audit_export_soc2_v1.schema.json",
+  "title": "AstraGraph SOC2 Audit Export v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "generated_at",
+    "organization",
+    "project",
+    "policy_domain",
+    "controls",
+    "records"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "soc2.audit.v1"
+    },
+    "generated_at": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "organization": {
+      "type": "string",
+      "minLength": 1
+    },
+    "project": {
+      "type": "string",
+      "minLength": 1
+    },
+    "policy_domain": {
+      "type": "string",
+      "minLength": 1
+    },
+    "controls": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "control_id",
+          "objective"
+        ],
+        "properties": {
+          "control_id": {
+            "type": "string"
+          },
+          "objective": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "violation_id",
+          "workflow_id",
+          "node_id",
+          "rule_id",
+          "agent_id",
+          "timestamp",
+          "deviation_score",
+          "threshold",
+          "snapshot"
+        ],
+        "properties": {
+          "violation_id": {
+            "type": "string"
+          },
+          "workflow_id": {
+            "type": "string"
+          },
+          "node_id": {
+            "type": "string"
+          },
+          "rule_id": {
+            "type": "string"
+          },
+          "agent_id": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "integer"
+          },
+          "deviation_score": {
+            "type": "number"
+          },
+          "threshold": {
+            "type": "number"
+          },
+          "snapshot": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  }
+}

@@ -49,6 +49,26 @@ export type ViolationFilter = {
   to_ts?: number;
 };
 
+export type SloSummary = {
+  latency_ms: {
+    samples: number;
+    p50_ms: number;
+    p95_ms: number;
+    p99_ms: number;
+  };
+  actions: {
+    total: number;
+    allowed: number;
+    blocked: number;
+    pending: number;
+    block_rate: number;
+  };
+  false_positive_review_queue: {
+    count: number;
+    threshold_margin: number;
+  };
+};
+
 const DEFAULT_BASE_URL =
   import.meta.env.VITE_GRAPH_API ?? "http://localhost:8080";
 
@@ -148,4 +168,19 @@ export async function fetchViolationDetail(
     throw new Error("Failed to load violation details");
   }
   return response.json() as Promise<ViolationDetail>;
+}
+
+export async function fetchSloSummary(
+  reviewMargin = 0.05
+): Promise<SloSummary> {
+  const response = await fetch(
+    `${DEFAULT_BASE_URL}/audit/slo?review_margin=${encodeURIComponent(
+      reviewMargin
+    )}`,
+    { headers: authHeaders() }
+  );
+  if (!response.ok) {
+    throw new Error("Failed to load SLO summary");
+  }
+  return response.json() as Promise<SloSummary>;
 }

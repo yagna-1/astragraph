@@ -23,6 +23,10 @@ pub struct PolicySpec {
     pub agents: Vec<AgentSpec>,
     pub rules: Vec<RuleSpec>,
     pub verification: VerificationSpec,
+    #[serde(default)]
+    pub runtime: RuntimeSpec,
+    #[serde(default)]
+    pub advanced_rules: Vec<AdvancedRuleSpec>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -69,6 +73,36 @@ pub struct VerificationSpec {
     pub fallback: FallbackMode,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct RuntimeSpec {
+    #[serde(default = "default_runtime_version")]
+    pub version: String,
+    #[serde(default)]
+    pub advanced_mode: Option<AdvancedModeSpec>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum AdvancedPolicyEngine {
+    Dsl,
+    OpaCompat,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Copy)]
+pub struct AdvancedModeSpec {
+    pub engine: AdvancedPolicyEngine,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct AdvancedRuleSpec {
+    pub id: String,
+    pub description: String,
+    pub expression: String,
+    pub action: RuleAction,
+    #[serde(default)]
+    pub require_confirmation: Option<bool>,
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum FallbackMode {
@@ -84,6 +118,19 @@ pub enum PolicyError {
     InvalidFormat(&'static str),
 }
 
+impl Default for RuntimeSpec {
+    fn default() -> Self {
+        Self {
+            version: default_runtime_version(),
+            advanced_mode: None,
+        }
+    }
+}
+
+fn default_runtime_version() -> String {
+    "v1".to_string()
+}
+
 impl From<serde_yaml::Error> for PolicyError {
     fn from(err: serde_yaml::Error) -> Self {
         PolicyError::Parse(err)
@@ -97,6 +144,11 @@ pub fn parse_policy(raw_yaml: &str) -> Result<AgentPolicy, PolicyError> {
     }
     if policy.kind != "AgentPolicy" {
         return Err(PolicyError::InvalidFormat("unsupported kind"));
+    }
+    if !matches!(policy.spec.runtime.version.as_str(), "v1" | "v2") {
+        return Err(PolicyError::InvalidFormat(
+            "unsupported spec.runtime.version",
+        ));
     }
     Ok(policy)
 }
@@ -127,6 +179,7 @@ spec:
 "#;
         let policy = parse_policy(yaml).expect("parse");
         assert_eq!(policy.metadata.name, "finance-approval-guardrails");
+        assert_eq!(policy.spec.runtime.version, "v1");
     }
 
     #[test]
@@ -149,6 +202,34 @@ spec:
         let err = parse_policy(yaml).expect_err("error");
         match err {
             PolicyError::InvalidFormat(_) => {}
+            _ => panic!("unexpected error"),
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_runtime_version() {
+        let yaml = r#"
+apiVersion: astragraph.io/v1
+kind: AgentPolicy
+metadata:
+  name: test
+  version: "1"
+  owner: "owner"
+spec:
+  agents: []
+  rules: []
+  runtime:
+    version: v3
+  verification:
+    threshold: 0.5
+    model: "model"
+    fallback: BLOCK
+"#;
+        let err = parse_policy(yaml).expect_err("error");
+        match err {
+            PolicyError::InvalidFormat(message) => {
+                assert_eq!(message, "unsupported spec.runtime.version");
+            }
             _ => panic!("unexpected error"),
         }
     }

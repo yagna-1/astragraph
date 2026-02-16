@@ -7,11 +7,13 @@ import {
   fetchGraph,
   fetchGraphs,
   fetchNodes,
+  fetchSloSummary,
   fetchViolationDetail,
   fetchViolations,
   GraphNode,
   GraphResponse,
   GraphSummary,
+  SloSummary,
   ViolationDetail as ViolationDetailType,
   ViolationSummary,
 } from "./api/graphClient";
@@ -24,6 +26,13 @@ function formatTimestamp(unixSeconds: number): string {
     return "unknown";
   }
   return new Date(unixSeconds * 1000).toLocaleString();
+}
+
+function formatPercent(value: number): string {
+  if (!Number.isFinite(value)) {
+    return "0.00%";
+  }
+  return `${(value * 100).toFixed(2)}%`;
 }
 
 function buildHitCounts(items: string[]): Array<{ key: string; count: number }> {
@@ -49,6 +58,7 @@ export function App() {
   );
   const [driftPath, setDriftPath] = useState<string[] | undefined>(undefined);
   const [violations, setViolations] = useState<ViolationSummary[]>([]);
+  const [sloSummary, setSloSummary] = useState<SloSummary | null>(null);
   const [selectedViolation, setSelectedViolation] =
     useState<ViolationDetailType | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -97,9 +107,11 @@ export function App() {
           workflow_id: violationWorkflowFilter || undefined,
           from_ts: fromTs,
         });
+        const slo = await fetchSloSummary();
         records.sort((left, right) => right.timestamp - left.timestamp);
         if (!cancelled) {
           setViolations(records);
+          setSloSummary(slo);
         }
       } catch (err) {
         if (!cancelled) {
@@ -202,6 +214,11 @@ export function App() {
   const topRule = ruleHits[0]?.key ?? "none";
   const topAgent = agentHits[0]?.key ?? "none";
   const latestViolation = violationOptions[0];
+  const p50 = sloSummary?.latency_ms.p50_ms ?? 0;
+  const p95 = sloSummary?.latency_ms.p95_ms ?? 0;
+  const p99 = sloSummary?.latency_ms.p99_ms ?? 0;
+  const blockRate = sloSummary?.actions.block_rate ?? 0;
+  const fpQueueCount = sloSummary?.false_positive_review_queue.count ?? 0;
 
   const handleSelectViolation = async (violation: ViolationSummary) => {
     try {
@@ -309,6 +326,32 @@ export function App() {
           <div className="stat-card">
             <div className="meta">Top agent</div>
             <strong>{topAgent}</strong>
+          </div>
+        </div>
+        <div className="stats-grid slo-grid">
+          <div className="stat-card">
+            <div className="meta">p50 latency</div>
+            <strong>{p50.toFixed(1)} ms</strong>
+          </div>
+          <div className="stat-card">
+            <div className="meta">p95 latency</div>
+            <strong>{p95.toFixed(1)} ms</strong>
+          </div>
+          <div className="stat-card">
+            <div className="meta">p99 latency</div>
+            <strong>{p99.toFixed(1)} ms</strong>
+          </div>
+          <div className="stat-card">
+            <div className="meta">Block rate</div>
+            <strong>{formatPercent(blockRate)}</strong>
+          </div>
+          <div className="stat-card">
+            <div className="meta">FP review queue</div>
+            <strong>{fpQueueCount}</strong>
+          </div>
+          <div className="stat-card">
+            <div className="meta">Latency samples</div>
+            <strong>{sloSummary?.latency_ms.samples ?? 0}</strong>
           </div>
         </div>
         <div className="controls">

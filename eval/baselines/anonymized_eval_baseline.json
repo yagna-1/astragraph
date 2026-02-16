@@ -1,0 +1,11 @@
+{
+  "dataset_type": "anonymized_traces",
+  "total": 12,
+  "malicious_total": 6,
+  "benign_total": 6,
+  "false_allows": 0,
+  "false_blocks": 0,
+  "false_negative_rate": 0.0,
+  "false_positive_rate": 0.0,
+  "malicious_recall": 1.0
+}

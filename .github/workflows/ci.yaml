@@ -50,6 +50,12 @@ jobs:
         run: python3 eval/agentbench_eval.py --dataset eval/agentbench.jsonl --proxy-url http://127.0.0.1:7070/mcp/tools/call --max-far 0.05 --require-inputs --strict-http
       - name: Synthetic attack evaluation gate
         run: python3 eval/synthetic_attack_eval.py --dataset tests/synthetic/attack_traces.jsonl --proxy-url http://127.0.0.1:7070/mcp/tools/call --max-fnr 0.05 --max-far 0.10 --min-malicious-recall 0.95 --min-attack-recall 0.90 --require-inputs --strict-http
+      - name: Anonymized trace evaluation gate
+        run: python3 eval/anonymized_trace_eval.py --dataset tests/anonymized/anonymized_traces.jsonl --proxy-url http://127.0.0.1:7070/mcp/tools/call --max-fnr 0.05 --max-fpr 0.10 --min-recall 0.95 --require-inputs --strict-http --output /tmp/anonymized_eval_summary.json
+      - name: Verifier model-upgrade protocol gate
+        run: python3 eval/model_upgrade_gate.py --candidate /tmp/anonymized_eval_summary.json --baseline eval/baselines/anonymized_eval_baseline.json --max-fnr-regression 0.02 --max-fpr-regression 0.02 --max-recall-regression 0.02 --min-candidate-recall 0.95
+      - name: Review feedback loop summary
+        run: python3 eval/review_feedback_loop.py --input tests/anonymized/review_feedback.jsonl --output /tmp/verifier_feedback_summary.json --require-inputs
       - name: Stop mock proxy fixture
         if: ${{ always() }}
         run: |

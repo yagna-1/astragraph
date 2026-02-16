@@ -1,4 +1,7 @@
-use crate::parser::{AgentPolicy, AgentSpec, FallbackMode, RuleAction, RuleSpec, TimeWindow};
+use crate::parser::{
+    AdvancedPolicyEngine, AdvancedRuleSpec, AgentPolicy, AgentSpec, FallbackMode, RuleAction,
+    RuleSpec, TimeWindow,
+};
 use std::collections::HashMap;
 
 #[derive(Debug)]
@@ -23,9 +26,46 @@ pub enum EvaluationError {
     AgentNotFound,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct RuntimeEvaluationConfig {
+    pub advanced_mode_enabled: bool,
+}
+
+impl RuntimeEvaluationConfig {
+    pub fn from_env() -> Self {
+        let advanced_mode_enabled = std::env::var("ASTRAGRAPH_POLICY_ADVANCED_MODE")
+            .ok()
+            .map(|value| {
+                matches!(
+                    value.trim().to_ascii_lowercase().as_str(),
+                    "1" | "true" | "yes" | "on"
+                )
+            })
+            .unwrap_or(false);
+        Self {
+            advanced_mode_enabled,
+        }
+    }
+}
+
+#[allow(dead_code)]
 pub fn evaluate_policy(
     policy: &AgentPolicy,
     context: &PolicyContext<'_>,
+) -> Result<EvaluationResult, EvaluationError> {
+    evaluate_policy_with_runtime(
+        policy,
+        context,
+        &RuntimeEvaluationConfig {
+            advanced_mode_enabled: false,
+        },
+    )
+}
+
+pub fn evaluate_policy_with_runtime(
+    policy: &AgentPolicy,
+    context: &PolicyContext<'_>,
+    runtime: &RuntimeEvaluationConfig,
 ) -> Result<EvaluationResult, EvaluationError> {
     let agent = policy
         .spec
@@ -41,6 +81,22 @@ pub fn evaluate_policy(
             &policy.spec.verification,
             false,
         ));
+    }
+
+    if runtime.advanced_mode_enabled {
+        if let Some(advanced_mode) = policy.spec.runtime.advanced_mode {
+            for rule in &policy.spec.advanced_rules {
+                if !matches_advanced_expression(rule, advanced_mode.engine, context, agent.tier) {
+                    continue;
+                }
+                return Ok(result_from_policy(
+                    rule.action,
+                    Some(rule.id.clone()),
+                    &policy.spec.verification,
+                    rule.require_confirmation.unwrap_or(false),
+                ));
+            }
+        }
     }
 
     for rule in &policy.spec.rules {
@@ -65,6 +121,18 @@ pub fn evaluate_policy(
         &policy.spec.verification,
         false,
     ))
+}
+
+fn matches_advanced_expression(
+    rule: &AdvancedRuleSpec,
+    engine: AdvancedPolicyEngine,
+    context: &PolicyContext<'_>,
+    agent_tier: u32,
+) -> bool {
+    let expression = normalize_expression_for_engine(&rule.expression, engine);
+    split_clauses(&expression)
+        .iter()
+        .all(|clause| matches_advanced_clause(clause, context, agent_tier))
 }
 
 fn is_blocked_tool(agent: &AgentSpec, tool_name: &str) -> bool {
@@ -100,7 +168,7 @@ fn evaluate_time_window(rule: &RuleSpec, context: &PolicyContext<'_>) -> RuleAct
 }
 
 fn matches_condition(rule: &RuleSpec, context: &PolicyContext<'_>, agent_tier: u32) -> bool {
-    let clauses: Vec<&str> = rule.condition.split("AND").map(str::trim).collect();
+    let clauses = split_clauses(&rule.condition);
     clauses
         .iter()
         .all(|clause| matches_clause(clause, context, agent_tier))
@@ -135,6 +203,162 @@ fn matches_clause(clause: &str, context: &PolicyContext<'_>, agent_tier: u32) ->
     }
 
     false
+}
+
+fn normalize_expression_for_engine(expression: &str, engine: AdvancedPolicyEngine) -> String {
+    match engine {
+        AdvancedPolicyEngine::Dsl => expression.to_string(),
+        AdvancedPolicyEngine::OpaCompat => expression
+            .replace("input.action.tool", "action.tool")
+            .replace("input.agent.tier", "agent_tier")
+            .replace("input.action.args.", "action.args.")
+            .replace("input.action.args", "action.args"),
+    }
+}
+
+fn split_clauses(expression: &str) -> Vec<String> {
+    expression
+        .replace("&&", " AND ")
+        .split("AND")
+        .map(str::trim)
+        .filter(|clause| !clause.is_empty())
+        .map(|clause| clause.to_string())
+        .collect()
+}
+
+fn matches_advanced_clause(clause: &str, context: &PolicyContext<'_>, agent_tier: u32) -> bool {
+    if let Some((left, right)) = split_binary_clause(clause, " in ") {
+        let Some(left_value) = resolve_expr_value(left, context, agent_tier) else {
+            return false;
+        };
+        let list = right.trim().trim_start_matches('[').trim_end_matches(']');
+        return list
+            .split(',')
+            .map(|item| trim_value(item).to_string())
+            .any(|item| matches_text_value(&left_value, &item));
+    }
+
+    for operator in ["==", "!=", ">=", "<=", ">", "<"] {
+        if let Some((left, right)) = split_binary_clause(clause, operator) {
+            return compare_expression_values(left, operator, right, context, agent_tier);
+        }
+    }
+
+    false
+}
+
+fn split_binary_clause<'a>(clause: &'a str, operator: &str) -> Option<(&'a str, &'a str)> {
+    let (left, right) = clause.split_once(operator)?;
+    Some((left.trim(), right.trim()))
+}
+
+#[derive(Debug, Clone)]
+enum ExprValue {
+    Text(String),
+    Number(f64),
+    Bool(bool),
+}
+
+fn compare_expression_values(
+    left: &str,
+    operator: &str,
+    right: &str,
+    context: &PolicyContext<'_>,
+    agent_tier: u32,
+) -> bool {
+    let Some(left_value) = resolve_expr_value(left, context, agent_tier) else {
+        return false;
+    };
+
+    if let Some(number) = parse_expr_number(right) {
+        return compare_numbers(left_value, operator, number);
+    }
+    if let Some(flag) = parse_expr_bool(right) {
+        return compare_bools(left_value, operator, flag);
+    }
+    let text = trim_value(right).to_string();
+    compare_text(left_value, operator, &text)
+}
+
+fn resolve_expr_value(
+    expr: &str,
+    context: &PolicyContext<'_>,
+    agent_tier: u32,
+) -> Option<ExprValue> {
+    let normalized = expr.trim();
+    if matches!(normalized, "action.tool" | "tool") {
+        return Some(ExprValue::Text(context.tool_name.to_string()));
+    }
+    if matches!(normalized, "agent_tier" | "agent.tier") {
+        return Some(ExprValue::Number(agent_tier as f64));
+    }
+    if let Some(arg_key) = normalized.strip_prefix("action.args.") {
+        let value = context.args.get(arg_key)?;
+        if let Some(number) = value.as_f64() {
+            return Some(ExprValue::Number(number));
+        }
+        if let Some(flag) = value.as_bool() {
+            return Some(ExprValue::Bool(flag));
+        }
+        if let Some(text) = value.as_str() {
+            return Some(ExprValue::Text(text.to_string()));
+        }
+    }
+    None
+}
+
+fn parse_expr_number(value: &str) -> Option<f64> {
+    trim_value(value).parse::<f64>().ok()
+}
+
+fn parse_expr_bool(value: &str) -> Option<bool> {
+    match trim_value(value).to_ascii_lowercase().as_str() {
+        "true" => Some(true),
+        "false" => Some(false),
+        _ => None,
+    }
+}
+
+fn compare_numbers(left_value: ExprValue, operator: &str, right_number: f64) -> bool {
+    let ExprValue::Number(left_number) = left_value else {
+        return false;
+    };
+    match operator {
+        "==" => (left_number - right_number).abs() < 1e-9,
+        "!=" => (left_number - right_number).abs() >= 1e-9,
+        ">" => left_number > right_number,
+        ">=" => left_number >= right_number,
+        "<" => left_number < right_number,
+        "<=" => left_number <= right_number,
+        _ => false,
+    }
+}
+
+fn compare_bools(left_value: ExprValue, operator: &str, right_flag: bool) -> bool {
+    let ExprValue::Bool(left_flag) = left_value else {
+        return false;
+    };
+    match operator {
+        "==" => left_flag == right_flag,
+        "!=" => left_flag != right_flag,
+        _ => false,
+    }
+}
+
+fn compare_text(left_value: ExprValue, operator: &str, right_text: &str) -> bool {
+    match operator {
+        "==" => matches_text_value(&left_value, right_text),
+        "!=" => !matches_text_value(&left_value, right_text),
+        _ => false,
+    }
+}
+
+fn matches_text_value(left_value: &ExprValue, expected: &str) -> bool {
+    match left_value {
+        ExprValue::Text(text) => text == expected,
+        ExprValue::Number(number) => format!("{number}") == expected,
+        ExprValue::Bool(flag) => format!("{flag}") == expected,
+    }
 }
 
 fn trim_value(value: &str) -> &str {
@@ -198,7 +422,8 @@ fn result_from_policy(
 mod tests {
     use super::*;
     use crate::parser::{
-        parse_policy, AgentPolicy, AgentSpec, Metadata, PolicySpec, RuleSpec, VerificationSpec,
+        parse_policy, AdvancedModeSpec, AdvancedPolicyEngine, AdvancedRuleSpec, AgentPolicy,
+        AgentSpec, Metadata, PolicySpec, RuleSpec, RuntimeSpec, VerificationSpec,
     };
     use serde::Deserialize;
     use std::fs;
@@ -236,6 +461,8 @@ mod tests {
                     model: "model".to_string(),
                     fallback: FallbackMode::Block,
                 },
+                runtime: RuntimeSpec::default(),
+                advanced_rules: Vec::new(),
             },
         }
     }
@@ -272,6 +499,95 @@ mod tests {
     #[test]
     fn parses_utc_hhmm_without_iso_t_separator() {
         assert_eq!(parse_time_to_minutes("21:10 UTC"), Some(1270));
+    }
+
+    #[test]
+    fn advanced_dsl_rule_applies_when_feature_flag_enabled() {
+        let mut policy = base_policy();
+        policy.spec.agents[0].allowed_tools.push("export_data".to_string());
+        policy.spec.rules.clear();
+        policy.spec.runtime = RuntimeSpec {
+            version: "v2".to_string(),
+            advanced_mode: Some(AdvancedModeSpec {
+                engine: AdvancedPolicyEngine::Dsl,
+            }),
+        };
+        policy.spec.advanced_rules = vec![AdvancedRuleSpec {
+            id: "adv-block".to_string(),
+            description: "Block export in advanced mode".to_string(),
+            expression: "action.tool == export_data && agent_tier >= 3".to_string(),
+            action: RuleAction::Block,
+            require_confirmation: Some(true),
+        }];
+
+        let context = PolicyContext {
+            agent_name: "agent",
+            tool_name: "export_data",
+            args: HashMap::new(),
+            now_utc: None,
+        };
+
+        let disabled = evaluate_policy_with_runtime(
+            &policy,
+            &context,
+            &RuntimeEvaluationConfig {
+                advanced_mode_enabled: false,
+            },
+        )
+        .expect("evaluation disabled");
+        assert_eq!(disabled.decision, RuleAction::Allow);
+
+        let enabled = evaluate_policy_with_runtime(
+            &policy,
+            &context,
+            &RuntimeEvaluationConfig {
+                advanced_mode_enabled: true,
+            },
+        )
+        .expect("evaluation enabled");
+        assert_eq!(enabled.decision, RuleAction::Block);
+        assert_eq!(enabled.matched_rule_id.as_deref(), Some("adv-block"));
+        assert!(enabled.require_confirmation);
+    }
+
+    #[test]
+    fn advanced_opa_compat_expression_is_supported() {
+        let mut policy = base_policy();
+        policy.spec.agents[0].allowed_tools = vec!["review_summary".to_string()];
+        policy.spec.rules.clear();
+        policy.spec.runtime = RuntimeSpec {
+            version: "v2".to_string(),
+            advanced_mode: Some(AdvancedModeSpec {
+                engine: AdvancedPolicyEngine::OpaCompat,
+            }),
+        };
+        policy.spec.advanced_rules = vec![AdvancedRuleSpec {
+            id: "adv-opa".to_string(),
+            description: "Require approval for high amount".to_string(),
+            expression: "input.action.tool == \"review_summary\" && input.action.args.amount >= 50000".to_string(),
+            action: RuleAction::Block,
+            require_confirmation: Some(false),
+        }];
+
+        let mut args = HashMap::new();
+        args.insert("amount".to_string(), serde_yaml::Value::from(60000));
+        let context = PolicyContext {
+            agent_name: "agent",
+            tool_name: "review_summary",
+            args,
+            now_utc: None,
+        };
+
+        let enabled = evaluate_policy_with_runtime(
+            &policy,
+            &context,
+            &RuntimeEvaluationConfig {
+                advanced_mode_enabled: true,
+            },
+        )
+        .expect("evaluation");
+        assert_eq!(enabled.decision, RuleAction::Block);
+        assert_eq!(enabled.matched_rule_id.as_deref(), Some("adv-opa"));
     }
 
     #[derive(Debug, Deserialize)]
