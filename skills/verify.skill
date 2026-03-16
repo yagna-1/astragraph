@@ -1,0 +1,4 @@
+name: verify
+description: Run AstraGraph verifier tests
+command: make test-verifier
+auto_commit_memory: true

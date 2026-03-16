@@ -142,10 +142,6 @@ def serve(config: Optional[VerifierConfig] = None) -> VerifierService:
     return service
 
 
-if __name__ == "__main__":
-    serve()
-
-
 def _init_telemetry() -> None:
     try:
         from opentelemetry import trace
@@ -181,3 +177,7 @@ class _SpanContextManager:
 
 def _start_span(name: str) -> _SpanContextManager:
     return _SpanContextManager(name)
+
+
+if __name__ == "__main__":
+    serve()

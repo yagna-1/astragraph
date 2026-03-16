@@ -1,0 +1,5 @@
+name: audit
+description: Export governance audit evidence to memory
+command: make test-policy
+auto_commit_memory: true
+produces: [memory/astragraph-audits/]

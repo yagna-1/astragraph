@@ -1,0 +1,4 @@
+name: serve
+description: Start AstraGraph graph, policy, verifier and proxy services
+command: docker compose up -d graph policy verifier astragraph-proxy
+auto_commit_memory: true

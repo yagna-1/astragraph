@@ -1,0 +1,5 @@
+name: test
+description: Run AstraGraph unit and integration suites
+command: make test
+auto_commit_memory: true
+on_failure: hooks/on-failure.sh

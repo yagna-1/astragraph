@@ -1,0 +1,30 @@
+name: astragraph
+version: 1.0.0
+model: claude-sonnet-4-6
+
+identity:
+  policy_id: astragraph-meta
+  namespace: astragraph
+  workflow_id_prefix: ag-
+
+tools:
+  - name: policy-evaluate
+    endpoint: http://localhost:18081/policies
+  - name: graph-query
+    endpoint: http://localhost:18080/graphs
+
+skills:
+  - serve
+  - verify
+  - audit
+  - test
+
+hooks:
+  pre-run: hooks/pre-run.sh
+  post-run: hooks/post-run.sh
+
+memory:
+  path: memory/
+  auto_commit: true
+  commit_message: "agent: auto-commit {skill} trace at {timestamp}"
+  human_review: pr
